@@ -1,4 +1,5 @@
-objects =   ./obj/c.o
+objects =   ./obj/c.o \
+            ./obj/RT.o
 
 
 objects_math =	./obj/mf_algebra_polinom.o \
@@ -78,6 +79,8 @@ c : $(objects_math) $(objects_phys) $(objects_astro) $(objects)
 
 ./obj/c.o : c.f90
 	gfortran -c -o ./obj/c.o c.f90
+./obj/RT.o : RT.f90
+	gfortran -c -o ./obj/RT.o RT.f90
 ./obj/RT_NonPolarized.o : RT_NonPolarized.f90
 	gfortran -c -o ./obj/RT_NonPolarized.o RT_NonPolarized.f90
 ./obj/RT_NonPolarized2.o : RT_NonPolarized2.f90
