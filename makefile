@@ -63,15 +63,14 @@ objects_phys =	./obj/PhFun_eMaxvell.o \
 		./obj/PhFun_Polarization.o \
 		./obj/PhFun_dielec_tensor.o \
 		./obj/PhFun_SpR.o \
-                ./obj/PhFun_GR_app.o #\
-		#./obj/PhFun_Compton_Harding.o
-
+        ./obj/PhFun_GR_app.o #\
 
 
 objects_astro =	./obj/af_ref_frame.o \
 		./obj/af_mag_accretion.o \
 		./obj/af_orbit_bin.o \
-		./obj/af_RT_layer_an.o
+		./obj/af_RT_layer_an.o \
+		./obj/af_NS_atm_structure.o
 
 
 c : $(objects_math) $(objects_phys) $(objects_astro) $(objects)
@@ -138,7 +137,8 @@ c : $(objects_math) $(objects_phys) $(objects_astro) $(objects)
 	gfortran -g -fcheck=all -Wall -Wextra -O0 -fopenmp -c -o ./obj/RT_MonteCarlo_MultiLayers.o RT_MonteCarlo_MultiLayers.f90
 
 
-
+./obj/af_NS_atm_structure.o : ../AstroFun/af_NS_atm_structure.f90
+	gfortran -c -o ./obj/af_NS_atm_structure.o ../AstroFun/af_NS_atm_structure.f90
 ./obj/af_ref_frame.o : ../AstroFun/af_ref_frame.f90
 	gfortran -c -o ./obj/af_ref_frame.o ../AstroFun/af_ref_frame.f90
 ./obj/af_orbit_bin.o : ../AstroFun/af_orbit_bin.f90
@@ -273,7 +273,4 @@ c : $(objects_math) $(objects_phys) $(objects_astro) $(objects)
 	gfortran -c -o ./obj/mf_intExp.o ../mf/mf_intExp.f90
 ./obj/mf_interpol.o : ../mf/mf_interpol.f90
 	gfortran -c -o ./obj/mf_interpol.o ../mf/mf_interpol.f90
-
-
-
 
