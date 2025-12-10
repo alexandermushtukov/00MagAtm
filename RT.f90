@@ -4,6 +4,7 @@ subroutine set_atm_structure()
 implicit none
 real*8::pi=3.141592653589793d0
 real*8,allocatable::m_atm_I(:,:,:,:),m_atm_T_rho(:,:)
+complex*16,allocatable::m_atm_S(:,:,:,:)
 real*8::B12,m_ns,R6,g14,theta_b,m_max
 integer::n_m,n_mu,n_fi
 real*8::dmu,dfi
@@ -15,7 +16,7 @@ real*8::dmu,dfi
   n_m = 1000
   n_mu = 40
   n_fi = 100
-  allocate( m_atm_I(n_m,n_mu,n_fi,1),m_atm_T_rho(n_m,2) )  !== intensity; T & rho ==!
+  allocate( m_atm_I(n_m,n_mu,n_fi,2),m_atm_T_rho(n_m,2),m_atm_S(n_m,n_mu,n_fi,2) )  !== intensity; T & rho ==!
   dmu = 2.d0/n_mu; dfi = pi/n_fi
 return
 end subroutine set_atm_structure
