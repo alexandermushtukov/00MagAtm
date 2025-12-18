@@ -24,7 +24,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   !== physical paramters ==!
   m_ns = 1.4d0; R6 = 1.d0
   g14 = 1.328d0*m_ns/R6**2
-  B12 = 1.d0            !== surface B-field strength ==!
+  B12 = 1.d2            !== surface B-field strength ==!
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
   theta_b = 1.d0        !== B-field inclination ==!
   dot_m_6 = 0.d0
@@ -128,6 +128,8 @@ real*8::x_scale,kappa_T,tau_max,tau_min
         theta_ib = m_coord_b(j,k,1)
         m_atm_sigma(i,j,k,1,1) = absorption_mag_ff_Meszaros_term( 1,E,E_cyc,mas_tau_TkeV(i,2),theta_ib,Z,A,mas_m_rho(i,2) )
         m_atm_sigma(i,j,k,1,2) = absorption_mag_ff_Meszaros_term( 2,E,E_cyc,mas_tau_TkeV(i,2),theta_ib,Z,A,mas_m_rho(i,2) )
+        m_atm_sigma(i,j,k,2,1) = 11.d0 !... compton pol 1
+        m_atm_sigma(i,j,k,2,2) = 11.d0 !... compton pol 2
         !write(*,*)i,j,k,m_atm_sigma(i,j,k,1,1:2)
         !read(*,*)
         k = k+1
