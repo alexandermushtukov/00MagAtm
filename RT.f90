@@ -8,7 +8,7 @@ implicit none
 real*8::pi=3.141592653589793d0
 real*8,allocatable::m_atm_I(:,:,:,:),m_atm_T_rho(:,:),m_atm_sigma(:,:,:,:,:),m_atm_abs_b(:,:,:,:),mas_x_rho_tau(:,:),mas_tau_TkeV(:,:),F_tau(:,:),mas_m_rho(:,:)
 real*8,allocatable::m_coord_b(:,:,:),KK_b(:,:,:),KK(:,:,:,:)
-complex*16,allocatable::m_atm_S(:,:,:,:,:,:)
+complex*16,allocatable::m_atm_S(:,:,:,:,:,:,:)
 real*8::B12,m_ns,R6,g14,theta_b,m_min,m_max,E,E_cyc,dot_m_6,ln_Lambda
 integer::n_m,n_mu,n_fi
 real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),Z,A,ksi_i,ksi_f
@@ -41,7 +41,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   n_mu = 15;  n_fi = 15
   !=========================!
 
-  allocate( m_atm_I(n_m,n_mu,n_fi,2),m_atm_T_rho(n_m,2),m_atm_S(n_mu,n_mu,n_fi,n_fi,2,2),m_coord_b(n_mu,n_fi,2) )
+  allocate( m_atm_I(n_m,n_mu,n_fi,2),m_atm_T_rho(n_m,2),m_atm_S(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_coord_b(n_mu,n_fi,2) )
          !== intensity; T & rho; S-matrix ==!
   allocate( m_atm_sigma(n_m,n_mu,n_fi,2,2),m_atm_abs_b(n_m,n_mu,2,2),mas_x_rho_tau(n_m,5),mas_tau_TkeV(n_m,2),F_tau(n_m,2),mas_m_rho(n_m,2) )
          !== free-free absorption and Compton ==!
@@ -119,10 +119,10 @@ real*8::x_scale,kappa_T,tau_max,tau_min
             fi_f = dfi/2 + (k2-1)*dfi
             theta_fb = m_coord_b(j2,k2,1)
             fi_fb = m_coord_b(j2,k2,2)
-            m_atm_S(j1,j2,k1,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(j1,j2,k1,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(j1,j2,k1,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(j1,j2,k1,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k1,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k1,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k1,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k1,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
             k2 = k2+1
           end do
           k1 = k1+1
@@ -148,7 +148,16 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       m_atm_abs_b(i,j,1,2) = absorption_mag_ff_Meszaros_term( 2,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
   
       !== compton scattering in B-RF ==!
-      ! ...
+      m_atm_abs_b(i,j,2,1:2) = 0.d0
+      j2 = 1
+      do while( j2.le.n_mu )
+        k2 = 1
+        do while( k2.le.n_fi )
+          m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) + (m_atm_S(i,j,j2,1,k2,1:2,1) + m_atm_S(i,j,j2,1,k2,1:2,2))*dmu*dfi
+          k2 = k2+1
+        end do
+        j2 = j2+1
+      end do
       !================================!
 
       j = j+1
@@ -165,14 +174,10 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       do while( k.le.n_fi )
         theta_ib = m_coord_b(j,k,1)
         jj = ( cos(theta_ib) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
-
         KK(i,j,k,1:2) = KK_b(i,jj,1:2)
         m_atm_sigma(i,j,k,1,1:2) = m_atm_abs_b(i,jj,1,1:2)   !== true absorption ==!
-
-        m_atm_sigma(i,j,k,2,1) = 11.d0 !== absorption due to Compton pol 1  ==!
-        m_atm_sigma(i,j,k,2,2) = 11.d0 !== absorption due to Compton pol 2  ==!
-
-        !write(*,*)i,j,k,m_atm_sigma(i,j,k,1,1:2)
+        m_atm_sigma(i,j,k,2,1:2) = m_atm_abs_b(i,jj,2,1:2)   !== absorption due to Compton pol 1  ==!
+        !write(*,*)i,j,k,m_atm_sigma(i,j,k,1:2,1:2)
         !read(*,*)
         k = k+1
       end do
@@ -183,6 +188,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   !== now we have absorption coefficients ==!
 122 return
 end subroutine set_atm_structure
+
 
 
 
@@ -201,14 +207,16 @@ real*8::c_mod,f_gamma_n_v2_aver,NormWavesEll,NormWavesEll_cvp  !==function==!
 real*8::E2,dkfdzi,y_f,z_f,Gamma,c_i,c_f,s_i,s_f,coeff
 integer::det
 
-  Gamma = f_gamma_n_v2_aver(0.d0,1,Ecyc/511)   !== Landau level width according to Pavlov [mc^2] ==!
-  Gamma = Gamma*511      !== [mc^2]->[keV] ==!
+  !!Gamma = f_gamma_n_v2_aver(0.d0,1,Ecyc/511)   !== Landau level width according to Pavlov [mc^2] ==!
+  !!Gamma = Gamma*511      !== [mc^2]->[keV] ==!
 
- ! ksi_i = NormWavesEll_cvp(1,E,Ecyc,theta1,rho,Z,A)
- ! ksi_f = NormWavesEll_cvp(1,E,Ecyc,theta2,rho,Z,A)
+  !ksi_i = NormWavesEll_cvp(1,E,Ecyc,theta1,rho,Z,A)
+  !ksi_f = NormWavesEll_cvp(1,E,Ecyc,theta2,rho,Z,A)
 
-  g = E/(E+Ecyc+ii*Gamma)*exp(+ii*(fi1-fi2))
-  f = E/(E-Ecyc+ii*Gamma)*exp(-ii*(fi1-fi2))
+  !g = E/(E+Ecyc+ii*Gamma)*exp(+ii*(fi1-fi2))  !== we exclude consideration of cyclotron line ==!   
+  !f = E/(E-Ecyc+ii*Gamma)*exp(-ii*(fi1-fi2))
+  g = E/(E+Ecyc)*exp(+ii*(fi1-fi2))
+  f = E/(E-Ecyc)*exp(-ii*(fi1-fi2))
 
   c_i=cos(theta1);  c_f=cos(theta2)
   s_i=sin(theta1);  s_f=sin(theta2)
