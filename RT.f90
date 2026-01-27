@@ -6,8 +6,8 @@ subroutine set_atm_structure()
 use abs_mag_ff_Meszaros
 implicit none
 real*8::pi=3.141592653589793d0
-real*8,allocatable::m_atm_I(:,:,:,:),m_atm_T_rho(:,:),m_atm_sigma(:,:,:,:,:),m_atm_abs_b(:,:,:),mas_x_rho_tau(:,:),mas_tau_TkeV(:,:),F_tau(:,:),mas_m_rho(:,:)
-real*8,allocatable::m_coord_b(:,:,:)
+real*8,allocatable::m_atm_I(:,:,:,:),m_atm_T_rho(:,:),m_atm_sigma(:,:,:,:,:),m_atm_abs_b(:,:,:,:),mas_x_rho_tau(:,:),mas_tau_TkeV(:,:),F_tau(:,:),mas_m_rho(:,:)
+real*8,allocatable::m_coord_b(:,:,:),KK_b(:,:,:),KK(:,:,:,:)
 complex*16,allocatable::m_atm_S(:,:,:,:,:,:)
 real*8::B12,m_ns,R6,g14,theta_b,m_min,m_max,E,E_cyc,dot_m_6,ln_Lambda
 integer::n_m,n_mu,n_fi
@@ -15,6 +15,7 @@ real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_f
 real*8::help
 integer::i,j,k,j1,j2,k1,k2,jj
 complex*16::Amp_dSigmadOmega !== functions ==!
+real*8::NormWavesEll  !==function==!
 
 real*8::x_scale,kappa_T,tau_max,tau_min
 
@@ -42,8 +43,9 @@ real*8::x_scale,kappa_T,tau_max,tau_min
 
   allocate( m_atm_I(n_m,n_mu,n_fi,2),m_atm_T_rho(n_m,2),m_atm_S(n_mu,n_mu,n_fi,n_fi,2,2),m_coord_b(n_mu,n_fi,2) )
          !== intensity; T & rho; S-matrix ==!
-  allocate( m_atm_sigma(n_m,n_mu,n_fi,2,2),m_atm_abs_b(n_m,n_mu,2),mas_x_rho_tau(n_m,5),mas_tau_TkeV(n_m,2),F_tau(n_m,2),mas_m_rho(n_m,2) )
+  allocate( m_atm_sigma(n_m,n_mu,n_fi,2,2),m_atm_abs_b(n_m,n_mu,2,2),mas_x_rho_tau(n_m,5),mas_tau_TkeV(n_m,2),F_tau(n_m,2),mas_m_rho(n_m,2) )
          !== free-free absorption and Compton ==!
+  allocate( KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2) )
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
 
@@ -82,7 +84,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   mas_m_rho(1:n_m,2) = mas_x_rho_tau(1:n_m,2)
   !== now we have hydro structure of atmosphere ==!
 
-  !== precalcu;ate scatterings ==!
+  !== precalculate scatterings amps ==!
   j1 = 1
   do while( j1 .le. n_mu )
     mu_i = -1.d0 + dmu/2 + (j1-1)*dmu; theta_i = acos(mu_i)
@@ -103,7 +105,6 @@ real*8::x_scale,kappa_T,tau_max,tau_min
           m_atm_S(j1,j2,k1,k2,1,2) = Amp_dSigmadOmega(1,2,E,E_cyc,theta_ib,theta_fb,fi_ib,fi_fb)
           m_atm_S(j1,j2,k1,k2,2,1) = Amp_dSigmadOmega(2,1,E,E_cyc,theta_ib,theta_fb,fi_ib,fi_fb)
           m_atm_S(j1,j2,k1,k2,2,2) = Amp_dSigmadOmega(2,2,E,E_cyc,theta_ib,theta_fb,fi_ib,fi_fb)
-          !write(*,*)m_atm_S(4,j1,j2,k1,k2,1:2,1:2); read(*,*)
           k2 = k2+1
         end do
         k1 = k1+1
@@ -115,19 +116,29 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   end do
   !== now we have amplitudes of Compton scattering ==!
 
-  !== get absorption coeffisients ==!
+
+  !== get absorption coeffisients in B-field RF and ellipticities ==!
   i = 1
   do while( i.le.n_m )
     j = 1
     do while( j.le.n_mu )
-      mu_i = -1.d0 + dmu/2 + (i-1)*dmu; theta_i = acos(mu_i)
-      m_atm_abs_b(i,j,1) = absorption_mag_ff_Meszaros_term( 1,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
-      m_atm_abs_b(i,j,2) = absorption_mag_ff_Meszaros_term( 2,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
+      mu_i = -1.d0 + dmu/2 + (i-1)*dmu
+      theta_i = acos(mu_i)
+      KK_b(i,j,1) =  1.d0/NormWavesEll(0,E,E_cyc,theta_i)
+      KK_b(i,j,2) =  1.d0/NormWavesEll(1,E,E_cyc,theta_i)
+      m_atm_abs_b(i,j,1,1) = absorption_mag_ff_Meszaros_term( 1,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
+      m_atm_abs_b(i,j,1,2) = absorption_mag_ff_Meszaros_term( 2,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
+  
+      !== compton scattering in B-RF ==!
+      ! ...
+      !================================!
+
       j = j+1
     end do
     i = i+1
   end do
 
+  !== get absorption coefficients in atmospheric RF ==!
   i = 1
   do while( i.le.n_m )
     j = 1
@@ -136,10 +147,13 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       do while( k.le.n_fi )
         theta_ib = m_coord_b(j,k,1)
         jj = ( cos(theta_ib) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
-        m_atm_sigma(i,j,k,1,1) = m_atm_abs_b(i,jj,1)   !== true absorption ==!
-        m_atm_sigma(i,j,k,1,2) = m_atm_abs_b(i,jj,1)   !== true absorption ==!
-        m_atm_sigma(i,j,k,2,1) = 11.d0 !... compton pol 1
-        m_atm_sigma(i,j,k,2,2) = 11.d0 !... compton pol 2
+
+        KK(i,j,k,1:2) = KK_b(i,jj,1:2)
+        m_atm_sigma(i,j,k,1,1:2) = m_atm_abs_b(i,jj,1,1:2)   !== true absorption ==!
+
+        m_atm_sigma(i,j,k,2,1) = 11.d0 !== absorption due to Compton pol 1  ==!
+        m_atm_sigma(i,j,k,2,2) = 11.d0 !== absorption due to Compton pol 2  ==!
+
         !write(*,*)i,j,k,m_atm_sigma(i,j,k,1,1:2)
         !read(*,*)
         k = k+1
