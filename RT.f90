@@ -26,7 +26,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   g14 = 1.328d0*m_ns/R6**2
   B12 = 1.d2            !== surface B-field strength ==!
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
-  theta_b = 1.d0        !== B-field inclination ==!
+  theta_b = 1.d0        !== B-field inclination with respect to the normal [rad] ==!
   dot_m_6 = 0.d0
   ln_Lambda = 10.d0
   Z = 1.d0
@@ -36,7 +36,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   !== numerical paramters ==!
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
   m_max = 1.d+3        !== the maximal column dencity [g/cm^2] ==!
-  n_m  = 1000
+  n_m  = 100
   n_mu = 20;  n_fi = 20
   !=========================!
 
@@ -47,7 +47,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
 
-  !== some temperature sctructure ==!
+  !== set up some temperature sctructure ==!
   i = 1
   do while( i.le. n_m )
     mas_tau_TkeV(i,1) = m_min * (m_max/m_min)**( dble(i-1) / dble(n_m-1) )
@@ -73,19 +73,16 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     i = i+1
   end do
 
-  !== get hydro stracure of atmosphere ==!
+  !== get hydrostatical stracure of the atmosphere ==!
   tau_min = m_min*kappa_T
   tau_max = m_max*kappa_T
   call acc_atm_structure_4(mas_x_rho_tau,n_m,tau_min,tau_max,x_scale, &
                            g14,mas_tau_TkeV,n_m,dot_m_6,ln_Lambda,0.d0,F_tau)
   mas_m_rho(1:n_m,1) = mas_x_rho_tau(1:n_m,3)/kappa_T
   mas_m_rho(1:n_m,2) = mas_x_rho_tau(1:n_m,2)
-  !i=1
-  !do while(i.le.n_m)
-  !  write(*,*)mas_m_rho(i,1:2); i=i+1
-  !end do
   !== now we have hydro structure of atmosphere ==!
 
+  !== precalcu;ate scatterings ==!
   j1 = 1
   do while( j1 .le. n_mu )
     mu_i = -1.d0 + dmu/2 + (j1-1)*dmu; theta_i = acos(mu_i)
