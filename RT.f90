@@ -14,8 +14,8 @@ integer::n_m,n_mu,n_fi
 real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),Z,A
 real*8::help
 integer::i,j,k,j1,j2,k1,k2,jj
-complex*16::Amp_dSigmadOmega !== functions ==!
-real*8::NormWavesEll  !==function==!
+complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
+real*8::NormWavesEll,NormWavesEll_cvp  !==function==!
 
 real*8::x_scale,kappa_T,tau_max,tau_min
 
@@ -37,8 +37,8 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   !== numerical paramters ==!
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
   m_max = 1.d+3        !== the maximal column dencity [g/cm^2] ==!
-  n_m  = 100
-  n_mu = 20;  n_fi = 20
+  n_m  = 30
+  n_mu = 15;  n_fi = 15
   !=========================!
 
   allocate( m_atm_I(n_m,n_mu,n_fi,2),m_atm_T_rho(n_m,2),m_atm_S(n_mu,n_mu,n_fi,n_fi,2,2),m_coord_b(n_mu,n_fi,2) )
@@ -84,35 +84,53 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   mas_m_rho(1:n_m,2) = mas_x_rho_tau(1:n_m,2)
   !== now we have hydro structure of atmosphere ==!
 
-  !== precalculate scatterings amps ==!
-  j1 = 1
-  do while( j1 .le. n_mu )
-    mu_i = -1.d0 + dmu/2 + (j1-1)*dmu; theta_i = acos(mu_i)
-    j2 = 1
-    do while( j2 .le. n_mu )
-      mu_f = -1.d0 + dmu/2 + (j2-1)*dmu; theta_f = acos(mu_f)
-      k1 = 1
-      do while( k1 .le. n_fi )
-        fi_i = dfi/2 + (k1-1)*dfi
-        theta_ib = m_coord_b(j1,k1,1)
-        fi_ib = m_coord_b(j1,k1,2)
-        k2 = 1
-        do while( k2 .le. n_fi )
-          fi_f = dfi/2 + (k2-1)*dfi
-          theta_fb = m_coord_b(j2,k2,1)
-          fi_fb = m_coord_b(j2,k2,2)
-          m_atm_S(j1,j2,k1,k2,1,1) = Amp_dSigmadOmega(1,1,E,E_cyc,theta_ib,theta_fb,fi_ib,fi_fb)
-          m_atm_S(j1,j2,k1,k2,1,2) = Amp_dSigmadOmega(1,2,E,E_cyc,theta_ib,theta_fb,fi_ib,fi_fb)
-          m_atm_S(j1,j2,k1,k2,2,1) = Amp_dSigmadOmega(2,1,E,E_cyc,theta_ib,theta_fb,fi_ib,fi_fb)
-          m_atm_S(j1,j2,k1,k2,2,2) = Amp_dSigmadOmega(2,2,E,E_cyc,theta_ib,theta_fb,fi_ib,fi_fb)
-          k2 = k2+1
-        end do
-        k1 = k1+1
-      end do
-      j2 = j2+1
+  !== get ellipticities ==!
+  i = 1
+  do while( i.le.n_m )
+    j = 1
+    do while( j.le.n_mu )
+      mu_i = -1.d0 + dmu/2 + (i-1)*dmu
+      theta_i = acos(mu_i)
+      KK_b(i,j,1) = NormWavesEll_cvp(1,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== X-mode ==!
+      KK_b(i,j,2) = NormWavesEll_cvp(2,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== O-mode ==!
+      j = j+1
     end do
-    write(*,*)"# ",j1,n_mu
-    j1 = j1+1
+    i = i+1
+  end do
+
+  !== precalculate scatterings amps ==!
+  i=1
+  do while(i.le.n_m)
+    j1 = 1
+    do while( j1 .le. n_mu )
+      mu_i = -1.d0 + dmu/2 + (j1-1)*dmu; theta_i = acos(mu_i)
+      j2 = 1
+      do while( j2 .le. n_mu )
+        mu_f = -1.d0 + dmu/2 + (j2-1)*dmu; theta_f = acos(mu_f)
+        k1 = 1
+        do while( k1 .le. n_fi )
+          fi_i = dfi/2 + (k1-1)*dfi
+          theta_ib = m_coord_b(j1,k1,1)
+            fi_ib = m_coord_b(j1,k1,2)
+          k2 = 1
+          do while( k2 .le. n_fi )
+            fi_f = dfi/2 + (k2-1)*dfi
+            theta_fb = m_coord_b(j2,k2,1)
+            fi_fb = m_coord_b(j2,k2,2)
+            m_atm_S(j1,j2,k1,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb)
+            m_atm_S(j1,j2,k1,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb)
+            m_atm_S(j1,j2,k1,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb)
+            m_atm_S(j1,j2,k1,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb)
+            k2 = k2+1
+          end do
+          k1 = k1+1
+        end do
+        j2 = j2+1
+      end do
+      j1 = j1+1
+    end do
+    write(*,*)"# ",i,n_m
+    i = i+1
   end do
   !== now we have amplitudes of Compton scattering ==!
 
@@ -124,8 +142,6 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     do while( j.le.n_mu )
       mu_i = -1.d0 + dmu/2 + (i-1)*dmu
       theta_i = acos(mu_i)
-      KK_b(i,j,1) =  1.d0/NormWavesEll(0,E,E_cyc,theta_i)
-      KK_b(i,j,2) =  1.d0/NormWavesEll(1,E,E_cyc,theta_i)
       m_atm_abs_b(i,j,1,1) = absorption_mag_ff_Meszaros_term( 1,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
       m_atm_abs_b(i,j,1,2) = absorption_mag_ff_Meszaros_term( 2,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
   
@@ -165,3 +181,49 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   !== now we have absorption coefficients ==!
 122 return
 end subroutine set_atm_structure
+
+
+
+!============================================================================================
+! ...
+! We assume coherent scattering.
+!============================================================================================
+complex*16 function Amp_dSigmadOmega_ell_magnitars(s1,s2,E,Ecyc,rho,theta1,theta2,fi1,fi2)
+implicit none
+integer,intent(in)::s1,s2
+real*8,intent(in)::E,Ecyc,rho,theta1,theta2,fi1,fi2
+complex*16::ii=(0.d0,1.d0)
+complex*16::g,f,amp
+real*8::c_mod,f_gamma_n_v2_aver,NormWavesEll,NormWavesEll_cvp  !==function==!
+real*8::E2,dkfdzi,y_f,z_f,Gamma,c_i,c_f,s_i,s_f,coeff,ksi_i,ksi_f
+integer::det
+
+  Gamma = f_gamma_n_v2_aver(0.d0,1,Ecyc/511)   !== Landau level width according to Pavlov [mc^2] ==!
+  Gamma = Gamma*511      !== [mc^2]->[keV] ==!
+
+  ksi_i = NormWavesEll_cvp(s1,E,Ecyc,theta1,rho,1.d0,1.d0)
+  ksi_f = NormWavesEll_cvp(s2,E,Ecyc,theta2,rho,1.d0,1.d0)
+
+  g = E/(E+Ecyc+ii*Gamma)*exp(+ii*(fi1-fi2))
+  f = E/(E-Ecyc+ii*Gamma)*exp(-ii*(fi1-fi2))
+
+  c_i=cos(theta1);  c_f=cos(theta2)
+  s_i=sin(theta1);  s_f=sin(theta2)
+  coeff=1.d0/sqrt(1.d0+ksi_i**2)/sqrt(1.d0+ksi_f**2)
+
+  if((s1.eq.1).and.(s2.eq.1))then
+    amp=2*ksi_f*ksi_i*s_f*s_i + g*(1.d0-ksi_i*c_i)*(1.d0-ksi_f*c_f) + f*(1.d0+ksi_i*c_i)*(1.d0+ksi_f*c_f)
+  end if
+  if((s1.eq.1).and.(s2.eq.2))then
+    amp=2*ksi_i*s_f*s_i + g*(c_f+ksi_f)*(ksi_i*c_i-1.d0) + f*(c_f-ksi_f)*(ksi_i*c_i+1.d0)
+  end if
+  if((s1.eq.2).and.(s2.eq.1))then
+    amp=2*ksi_f*s_f*s_i + g*(c_i+ksi_i)*(ksi_f*c_f-1.d0) + f*(c_i-ksi_i)*(ksi_f*c_f+1.d0)
+  end if
+  if((s1.eq.2).and.(s2.eq.2))then
+    amp=2*s_i*s_f + g*(ksi_i+c_i)*(ksi_f+c_f) + f*(ksi_i-c_i)*(ksi_f-c_f)
+  end if
+  Amp_dSigmadOmega_ell_magnitars=amp*coeff
+
+return
+end function Amp_dSigmadOmega_ell_magnitars
