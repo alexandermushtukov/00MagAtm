@@ -20,14 +20,14 @@ real*8::NormWavesEll,NormWavesEll_cvp  !==function==!
 real*8::x_scale,kappa_T,tau_max,tau_min
 
   kappa_T = 0.34d0
-  E = 2.d0
+  E = 1.d0
 
   !== physical paramters ==!
   m_ns = 1.4d0; R6 = 1.d0
   g14 = 1.328d0*m_ns/R6**2
-  B12 = 1.d2            !== surface B-field strength ==!
+  B12 = 1.d2           !== surface B-field strength ==!
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
-  theta_b = 1.d0        !== B-field inclination with respect to the normal [rad] ==!
+  theta_b = 0.1d0        !== B-field inclination with respect to the normal [rad] ==!
   dot_m_6 = 0.d0
   ln_Lambda = 10.d0
   Z = 1.d0
@@ -38,7 +38,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
   m_max = 1.d+3        !== the maximal column dencity [g/cm^2] ==!
   n_m  = 30
-  n_mu = 15;  n_fi = 15
+  n_mu = 20;  n_fi = 20
   !=========================!
 
   allocate( m_atm_I(n_m,n_mu,n_fi,2),m_atm_T_rho(n_m,2),m_atm_S(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_coord_b(n_mu,n_fi,2) )
@@ -98,7 +98,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     i = i+1
   end do
 
-  !== precalculate scatterings amps ==!
+  !== pre-calculate scatterings amps ==!
   i=1
   do while(i.le.n_m)
     j1 = 1
@@ -134,6 +134,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     write(*,*)"# ",i,n_m
     i = i+1
   end do
+  write(*,*)"#done: scatterings amps"
   !== now we have amplitudes of Compton scattering ==!
 
 
@@ -142,28 +143,28 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   do while( i.le.n_m )
     j = 1
     do while( j.le.n_mu )
-      mu_i = -1.d0 + dmu/2 + (i-1)*dmu
+      mu_i = -1.d0 + dmu/2 + (j-1)*dmu
       theta_i = acos(mu_i)
       m_atm_abs_b(i,j,1,1) = absorption_mag_ff_Meszaros_term( 1,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
       m_atm_abs_b(i,j,1,2) = absorption_mag_ff_Meszaros_term( 2,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
-  
       !== compton scattering in B-RF ==!
       m_atm_abs_b(i,j,2,1:2) = 0.d0
       j2 = 1
       do while( j2.le.n_mu )
         k2 = 1
         do while( k2.le.n_fi )
-          m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) + (m_atm_S(i,j,j2,1,k2,1:2,1) + m_atm_S(i,j,j2,1,k2,1:2,2))*dmu*dfi
+          m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) + ( (abs(m_atm_S(i,j,j2,1,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,1,k2,1:2,2)))**2 )*dmu*dfi
           k2 = k2+1
         end do
         j2 = j2+1
       end do
+      m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) * 3/32/pi
       !================================!
-
       j = j+1
     end do
     i = i+1
   end do
+  write(*,*)"#done: get absorption coeffisients in B-field RF"
 
   !== get absorption coefficients in atmospheric RF ==!
   i = 1
@@ -185,6 +186,10 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     end do
     i = i+1
   end do
+
+  write(*,*)m_atm_sigma(5,8,1,1,1:2)
+  write(*,*)m_atm_sigma(5,8,1,2,1:2)
+
   !== now we have absorption coefficients ==!
 122 return
 end subroutine set_atm_structure
@@ -213,7 +218,7 @@ integer::det
   !ksi_i = NormWavesEll_cvp(1,E,Ecyc,theta1,rho,Z,A)
   !ksi_f = NormWavesEll_cvp(1,E,Ecyc,theta2,rho,Z,A)
 
-  !g = E/(E+Ecyc+ii*Gamma)*exp(+ii*(fi1-fi2))  !== we exclude consideration of cyclotron line ==!   
+  !g = E/(E+Ecyc+ii*Gamma)*exp(+ii*(fi1-fi2))  !== we exclude consideration of cyclotron line ==!
   !f = E/(E-Ecyc+ii*Gamma)*exp(-ii*(fi1-fi2))
   g = E/(E+Ecyc)*exp(+ii*(fi1-fi2))
   f = E/(E-Ecyc)*exp(-ii*(fi1-fi2))
