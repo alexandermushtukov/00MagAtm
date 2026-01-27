@@ -11,7 +11,7 @@ real*8,allocatable::m_coord_b(:,:,:),KK_b(:,:,:),KK(:,:,:,:)
 complex*16,allocatable::m_atm_S(:,:,:,:,:,:)
 real*8::B12,m_ns,R6,g14,theta_b,m_min,m_max,E,E_cyc,dot_m_6,ln_Lambda
 integer::n_m,n_mu,n_fi
-real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),Z,A
+real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),Z,A,ksi_i,ksi_f
 real*8::help
 integer::i,j,k,j1,j2,k1,k2,jj
 complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
@@ -107,20 +107,22 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       j2 = 1
       do while( j2 .le. n_mu )
         mu_f = -1.d0 + dmu/2 + (j2-1)*dmu; theta_f = acos(mu_f)
+        ksi_i = KK_b(i,j1,1)
+        ksi_f = KK_b(i,j2,1)
         k1 = 1
         do while( k1 .le. n_fi )
           fi_i = dfi/2 + (k1-1)*dfi
           theta_ib = m_coord_b(j1,k1,1)
-            fi_ib = m_coord_b(j1,k1,2)
+          fi_ib = m_coord_b(j1,k1,2)
           k2 = 1
           do while( k2 .le. n_fi )
             fi_f = dfi/2 + (k2-1)*dfi
             theta_fb = m_coord_b(j2,k2,1)
             fi_fb = m_coord_b(j2,k2,2)
-            m_atm_S(j1,j2,k1,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb)
-            m_atm_S(j1,j2,k1,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb)
-            m_atm_S(j1,j2,k1,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb)
-            m_atm_S(j1,j2,k1,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb)
+            m_atm_S(j1,j2,k1,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(j1,j2,k1,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(j1,j2,k1,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(j1,j2,k1,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
             k2 = k2+1
           end do
           k1 = k1+1
@@ -135,7 +137,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   !== now we have amplitudes of Compton scattering ==!
 
 
-  !== get absorption coeffisients in B-field RF and ellipticities ==!
+  !== get absorption coeffisients in B-field RF ==!
   i = 1
   do while( i.le.n_m )
     j = 1
@@ -187,22 +189,23 @@ end subroutine set_atm_structure
 !============================================================================================
 ! ...
 ! We assume coherent scattering.
+! See appendix B in 2204.12271
 !============================================================================================
-complex*16 function Amp_dSigmadOmega_ell_magnitars(s1,s2,E,Ecyc,rho,theta1,theta2,fi1,fi2)
+complex*16 function Amp_dSigmadOmega_ell_magnitars(s1,s2,E,Ecyc,rho,theta1,theta2,fi1,fi2,Z,A,ksi_i,ksi_f)
 implicit none
 integer,intent(in)::s1,s2
-real*8,intent(in)::E,Ecyc,rho,theta1,theta2,fi1,fi2
+real*8,intent(in)::E,Ecyc,rho,theta1,theta2,fi1,fi2,Z,A,ksi_i,ksi_f
 complex*16::ii=(0.d0,1.d0)
 complex*16::g,f,amp
 real*8::c_mod,f_gamma_n_v2_aver,NormWavesEll,NormWavesEll_cvp  !==function==!
-real*8::E2,dkfdzi,y_f,z_f,Gamma,c_i,c_f,s_i,s_f,coeff,ksi_i,ksi_f
+real*8::E2,dkfdzi,y_f,z_f,Gamma,c_i,c_f,s_i,s_f,coeff
 integer::det
 
   Gamma = f_gamma_n_v2_aver(0.d0,1,Ecyc/511)   !== Landau level width according to Pavlov [mc^2] ==!
   Gamma = Gamma*511      !== [mc^2]->[keV] ==!
 
-  ksi_i = NormWavesEll_cvp(s1,E,Ecyc,theta1,rho,1.d0,1.d0)
-  ksi_f = NormWavesEll_cvp(s2,E,Ecyc,theta2,rho,1.d0,1.d0)
+ ! ksi_i = NormWavesEll_cvp(1,E,Ecyc,theta1,rho,Z,A)
+ ! ksi_f = NormWavesEll_cvp(1,E,Ecyc,theta2,rho,Z,A)
 
   g = E/(E+Ecyc+ii*Gamma)*exp(+ii*(fi1-fi2))
   f = E/(E-Ecyc+ii*Gamma)*exp(-ii*(fi1-fi2))
