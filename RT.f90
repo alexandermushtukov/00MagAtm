@@ -3,7 +3,6 @@
 !  mas_tau_TkeV(tau,T) - ...
 !========================================================================================
 subroutine set_atm_structure()
-use abs_mag_ff_Meszaros
 implicit none
 real*8::pi=3.141592653589793d0
 real*8,allocatable::m_atm_I(:,:,:,:),m_atm_T_rho(:,:),m_atm_sigma(:,:,:,:,:),m_atm_abs_b(:,:,:,:),mas_x_rho_tau(:,:),mas_tau_TkeV(:,:),F_tau(:,:),mas_m_rho(:,:)
@@ -15,7 +14,7 @@ real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_f
 real*8::help
 integer::i,j,k,j1,j2,k1,k2,jj
 complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
-real*8::NormWavesEll,NormWavesEll_cvp,NormWavesEll_cvp_  !==function==!
+real*8::NormWavesEll,NormWavesEll_cvp,NormWavesEll_cvp_,abs_mag_ff_Meszaros_new  !==function==!
 
 real*8::x_scale,kappa_T,tau_max,tau_min
 
@@ -36,7 +35,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
  
   !== numerical paramters ==!
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
-  m_max = 1.d+2        !== the maximal column dencity [g/cm^2] ==!
+  m_max = 1.d+3        !== the maximal column dencity [g/cm^2] ==!
   n_m  = 30
   n_mu = 20;  n_fi = 20
   !=========================!
@@ -79,7 +78,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   tau_min = m_min*kappa_T
   tau_max = m_max*kappa_T
   call acc_atm_structure_4(mas_x_rho_tau,n_m,tau_min,tau_max,x_scale, &
-                           g14,mas_tau_TkeV,n_m,dot_m_6,ln_Lambda,0.d0,F_tau)
+                           g14,mas_tau_TkeV,n_m,dot_m_6,ln_Lambda,1.d-3,F_tau)
   mas_m_rho(1:n_m,1) = mas_x_rho_tau(1:n_m,3)/kappa_T
   mas_m_rho(1:n_m,2) = mas_x_rho_tau(1:n_m,2)
   !== now we have hydro structure of atmosphere ==!
@@ -91,8 +90,8 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     do while( j.le.n_mu )
       mu_i = -1.d0 + dmu/2 + (j-1)*dmu
       theta_i = acos(mu_i)
-      KK_b(i,j,1) = NormWavesEll_cvp_(2,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== X-mode ==!
-      KK_b(i,j,2) = NormWavesEll_cvp_(1,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== O-mode ==!
+      KK_b(i,j,1) = NormWavesEll_cvp_(2,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== (+)-mode ==!
+      KK_b(i,j,2) = NormWavesEll_cvp_(1,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== (-)-mode ==!
       j = j+1
     end do
     i = i+1
@@ -145,8 +144,9 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     do while( j.le.n_mu )
       mu_i = -1.d0 + dmu/2 + (j-1)*dmu
       theta_i = acos(mu_i)
-      m_atm_abs_b(i,j,1,1) = absorption_mag_ff_Meszaros_term( 1,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
-      m_atm_abs_b(i,j,1,2) = absorption_mag_ff_Meszaros_term( 2,E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
+!write(*,*)"!!! ",KK_b(i,j,1),mas_m_rho(i,2)
+      m_atm_abs_b(i,j,1,1) = abs_mag_ff_Meszaros_new( KK_b(i,j,1),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
+      m_atm_abs_b(i,j,1,2) = abs_mag_ff_Meszaros_new( KK_b(i,j,2),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
       !== compton scattering in B-RF ==!
       m_atm_abs_b(i,j,2,1:2) = 0.d0
       j2 = 1
@@ -184,13 +184,13 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       end do
       j = j+1
     end do
+    m_atm_sigma(i,j,k,1:2,1:2) = m_atm_sigma(i,j,k,1:2,1:2) * kappa_T * mas_m_rho(i,2)  !== it is absorption coeff in [cm^{-1}] ==!
     write(*,*)i,mas_m_rho(i,2),KK_b(i,4,1:2)
     i = i+1
   end do
 
-  !write(*,*)m_atm_sigma(5,8,1,1,1:2)
-  !write(*,*)m_atm_sigma(5,8,1,2,1:2)
-
+  write(*,*)m_atm_sigma(15,8,1,1,1:2)
+  write(*,*)m_atm_sigma(15,8,1,2,1:2)
 
   !== now we have absorption coefficients ==!
 122 return
@@ -277,3 +277,34 @@ real*8::aa,n_1,n_2
   end if
 return
 end function NormWavesEll_cvp_
+
+
+!================================================================================================================
+! The function calculates the cross section of free-free absorption in units of Thomson scattering cross-section.
+! Note that the absorption cross secton is dependent in local density (proportional).
+! Temperature participates in sigma_0 only.
+! (4.4.37) Meszaros 1992.
+!================================================================================================================
+real*8 function abs_mag_ff_Meszaros_new(K_j,E,E_cyc,T_keV,theta,Z,A,rho)
+use abs_mag_ff_Meszaros
+implicit none
+real*8,intent(in)::K_j,E,E_cyc,T_keV,theta,Z,A,rho
+real*8::koef_e_0,koef_e_min,koef_e_plus,g_perp,g_par,g_R,res,K_jz,K_1,K_2,Kz_1,Kz_2
+real*8::NormWavesEll  !==function==!
+real*8::sigma_0
+
+  sigma_0 = 2.86d0/E**3 * Z**2/A * rho/sqrt(T_keV)   !==non-magnetic absorption cross section in units if Thomson scattering CS==!
+
+  K_jz=0.d0
+  !koef_e_0    = (K_j*sin(theta)-K_jz*cos(theta))**2 / (1.d0+K_j**2+K_jz**2)
+  !koef_e_plus = (1.d0+(K_j*cos(theta)+K_jz*sin(theta)))**2/2/ (1.d0+K_j**2+K_jz**2)  !==2003MNRAS338_233H_(3.1)==!
+  !koef_e_min  = (1.d0-(K_j*cos(theta)+K_jz*sin(theta)))**2/2/ (1.d0+K_j**2+K_jz**2)  !==2003MNRAS338_233H_(3.1)==!
+
+  koef_e_0    = ( K_j*sin(theta) )**2 / ( 1.d0 + K_j**2 )
+  koef_e_plus = ( 1.d0 + K_j*cos(theta) )**2 / 2/ ( 1.d0 + K_j**2 )  !==2003MNRAS338_233H_(3.1)==!
+  koef_e_min  = ( 1.d0 - K_j*cos(theta) )**2 / 2/ ( 1.d0 + K_j**2 )  !==2003MNRAS338_233H_(3.1)==!
+  call g( E/511, T_keV/511, E_cyc/511, theta, g_perp, g_par, g_R)
+  res = E**2/(E+E_cyc)**2*koef_e_plus*g_perp + koef_e_min*g_R + koef_e_0*g_par
+  abs_mag_ff_Meszaros_new = res*sigma_0
+return
+end function abs_mag_ff_Meszaros_new
