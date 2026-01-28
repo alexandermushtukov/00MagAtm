@@ -238,7 +238,8 @@ real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sig
 real*8::I_e(n_m,n_mu,n_fi,2),S(n_m,n_mu,n_fi,2)
 integer::i,j,k,i1,i2,ii,i_pol
 real*8::pi=3.141592653589793d0
-real*8::dmu,mu,dSigma,tau,kappa
+real*8::dmu,mu,dSigma,tau,tau_lim,kappa
+  tau_lim = 10.d0
   dmu = 2.d0/n_mu
   S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
   !== get intensity ==!
@@ -253,15 +254,20 @@ real*8::dmu,mu,dSigma,tau,kappa
         I_e(i,j,k,1:2) = 0.d0
         i_pol = 1
         !== calculate two polarisations separately ==!
-        do while(i_pol.le.1)
+        do while(i_pol.le.2)
           if( mu.ge.0.d0 )then
             !== upward propagation ==!
             ii = i+1
-            do while( ii.le.n_m )
+            do while( (ii.le.n_m).and.(tau.lt.tau_lim) )
               dSigma = mas_m_rho(ii,2) - mas_m_rho(ii-1,2)         !== colomn density of ii-layer ==!
               kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== due to abs and scattering ==!
               tau = tau + dSigma * kappa / abs(mu)
               I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)*exp(-tau)    !== fix it ==!
+!if(i.eq.1)then
+!write(*,*)i,j,k,i_pol,I_e(i,j,k,i_pol)
+              !write(*,*)i_pol,ii,dSigma,kappa,tau,m_atm_sigma(ii,j,k,1:2,i_pol)
+!              read(*,*)
+!end if
               !== use approximation for ... ==!
               !== check dimensions and comment them ==!
               ii = ii+1
@@ -270,7 +276,7 @@ real*8::dmu,mu,dSigma,tau,kappa
             !== downward propagation ==!
             ii = i-1
             do while( ii.ge.1 )
-              if(ii.ne.1)then
+              if((ii.ne.1).and.(tau.lt.tau_lim))then
                 dSigma = mas_m_rho(ii,2) - mas_m_rho(ii-1,2)
               else
                 dSigma = mas_m_rho(ii,2)
@@ -283,16 +289,26 @@ real*8::dmu,mu,dSigma,tau,kappa
           end if
           i_pol = i_pol+1
         end do
+
         k = k+1
       end do
       j = j+1
     end do
     i = i+1
   end do
-
   !== getting new source function ==!
-
   write(*,*)"# RT done"
+
+  k = 1
+  do while(k.le.n_fi)
+    j = 1
+    do while(j.le.n_mu)
+      !write(*,*)k,j,I_e(1,j,k,1:2)
+      j = j+1
+    end do
+    write(*,*)
+    k = k+1
+  end do
 return
 end subroutine RT_iterrations
 
@@ -377,6 +393,7 @@ real*8::aa,n_1,n_2
   end if
 return
 end function NormWavesEll_cvp_
+
 
 
 !================================================================================================================
