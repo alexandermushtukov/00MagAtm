@@ -39,6 +39,7 @@ real*8,intent(in)::E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_
 integer,intent(in)::n_m,n_mu,n_fi
 real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
   call set_atm_coefficients(S_0,R,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+  call RT_iterrations(S_0,R,n_m,n_mu,n_fi)
 return
 end subroutine pol_RT_fixE
 
@@ -213,17 +214,63 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       j = j+1
     end do
     m_atm_sigma(i,j,k,1:2,1:2) = m_atm_sigma(i,j,k,1:2,1:2) * kappa_T * mas_m_rho(i,2)  !== it is absorption coeff in [cm^{-1}] ==!
-    write(*,*)i,mas_m_rho(i,2),KK_b(i,4,1:2)
+    write(*,*)"## ",i,mas_m_rho(i,2),KK_b(i,4,1:2)
     i = i+1
   end do
   !== now we have absorption coefficients [cm^{-1}] ==!
 
-  write(*,*)m_atm_sigma(15,8,1,1,1:2)
-  write(*,*)m_atm_sigma(15,8,1,2,1:2)
-  write(*,*)S_0(15,8,4,1:2)
+  write(*,*)"# ",m_atm_sigma(15,8,1,1,1:2)
+  write(*,*)"# ",m_atm_sigma(15,8,1,2,1:2)
+  write(*,*)"# ",S_0(15,8,4,1:2)
 
 122 return
 end subroutine set_atm_coefficients
+
+
+
+!==========================================================================================================================
+! ...
+!==========================================================================================================================
+subroutine RT_iterrations(S_0,R,n_m,n_mu,n_fi)
+implicit none
+integer,intent(in)::n_m,n_mu,n_fi
+real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
+real*8::I_e(n_m,n_mu,n_fi,2),S(n_m,n_mu,n_fi,2)
+integer::i,j,k,i1,i2,ii
+real*8::pi=3.141592653589793d0
+real*8::dmu,mu
+  dmu = 2.d0/n_mu
+  S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
+  !== get intensity ==!
+  i = 1
+  do while(i.le.n_m)
+    j = 1
+    do while( j.le.n_mu)
+      mu = -1.d0 + dmu/2 + (j-1)*dmu
+      if( mu.ge.0.d0 )then
+        !== upward propagation ==!
+        i1 = i+1;  i2 = n_m
+      else
+        !== downward propagation ==!
+        i1 = 1;  i2 = i-1
+      end if
+      k = 1
+      do while( k.le.n_fi )
+        I_e(i,j,k,1:2) = 0.d0
+        ii = i1
+        do while( ii.le.i2 )
+          I_e(i,j,k,1:2) = I_e(i,j,k,1:2) + S_0(ii,j,k,1:2)    !== fix it ==! 
+          ii = ii+1
+        end do
+        k = k+1
+      end do
+      j = j+1
+    end do
+    i = i+1
+  end do
+  write(*,*)"# RT done"
+return
+end subroutine RT_iterrations
 
 
 
