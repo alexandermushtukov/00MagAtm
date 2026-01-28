@@ -33,14 +33,15 @@ end subroutine get_hydro_atm_structure
 !=======================================================================================================
 ! ...
 !=======================================================================================================
-subroutine pol_RT_fixE(E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+subroutine pol_RT_fixE(flux_tot,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 implicit none
+real*8,intent(out)::flux_tot(2)
 real*8::pi=3.141592653589793d0
 real*8,intent(in)::E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
 real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2)
 real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2)
-real*8::flux_tot(2),dmu,dfi,mu,theta
+real*8::dmu,dfi,mu,theta
 integer::i,k,j
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
@@ -64,20 +65,21 @@ integer::i,k,j
       !write(*,*)
       k = k+1
     end do
-    write(*,*)"# ",i,flux_tot(1:2)
+    !write(*,*)"# ",i,flux_tot(1:2)
     S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S(1:n_m,1:n_mu,1:n_fi,1:2)
     I_out_tot(1:n_mu,1:n_fi,1:2) = I_out_tot(1:n_mu,1:n_fi,1:2) + I_out(1:n_mu,1:n_fi,1:2)
     i = i+1
   end do
 
+  !== printing ==!
   k = 1
   do while(k.le.n_fi)
    j = 1
     do while(j.le.n_mu)
-      write(*,*)k*dfi,j*dmu,I_out(j,k,1:2)
+      !write(*,*)k*dfi,j*dmu,I_out(j,k,1:2)
       j = j+1
     end do
-    write(*,*)
+    !write(*,*)
     k = k+1
   end do
   
@@ -166,10 +168,14 @@ real*8::x_scale,kappa_T
             fi_f = dfi/2 + (k2-1)*dfi
             theta_fb = m_coord_b(j2,k2,1)
             fi_fb = m_coord_b(j2,k2,2)
-            m_atm_S(i,j1,j2,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(i,j1,j2,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(i,j1,j2,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(i,j1,j2,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),&
+                                                                     theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),&
+                                                                     theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),&
+                                                                     theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),&
+                                                                     theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
             k2 = k2+1
           end do
         !  k1 = k1+1
@@ -178,10 +184,10 @@ real*8::x_scale,kappa_T
       end do
       j1 = j1+1
     end do
-    write(*,*)"# ",i,n_m
+    !write(*,*)"# ",i,n_m
     i = i+1
   end do
-  write(*,*)"#done: scatterings amps"
+  !write(*,*)"#done: scatterings amps"
   !== now we have amplitudes of Compton scattering ==!
 
   !== get absorption coeffisients in B-field RF ==!
@@ -200,7 +206,8 @@ real*8::x_scale,kappa_T
       do while( j2.le.n_mu )
         k2 = 1
         do while( k2.le.n_fi )
-          m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) + ( (abs(m_atm_S(i,j,j2,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,k2,1:2,2)))**2 )*dmu*dfi
+          m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) &
+                               + ( (abs(m_atm_S(i,j,j2,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,k2,1:2,2)))**2 )*dmu*dfi
           R_b(i,j,j2,k2,1:2,1:2) = (abs(m_atm_S(i,j,j2,k2,1:2,1:2)))**2 * 3/32/pi          !== scattering redistribution function in B-field RF ==!
           k2 = k2+1
         end do
@@ -212,7 +219,7 @@ real*8::x_scale,kappa_T
     end do
     i = i+1
   end do
-  write(*,*)"#done: get absorption coeffisients in B-field RF"
+  !write(*,*)"#done: get absorption coeffisients in B-field RF"
 
   !== get absorption coefficients & sccattering redistribution function in atmospheric RF ==!
   i = 1
@@ -253,15 +260,9 @@ real*8::x_scale,kappa_T
       j = j+1
     end do
     m_atm_sigma(i,j,k,1:2,1:2) = m_atm_sigma(i,j,k,1:2,1:2) * kappa_T  !== it is opcita [cm^2/g] ==!
-    write(*,*)"## ",i,mas_m_rho(i,1:2),KK_b(i,4,1:2)
+    !write(*,*)"## ",i,mas_m_rho(i,1:2),KK_b(i,4,1:2)
     i = i+1
   end do
-  !== now we have absorption coefficients [cm^{-1}] ==!
-
-  !write(*,*)"# ",m_atm_sigma(15,8,1,1,1:2)
-  !write(*,*)"# ",m_atm_sigma(15,8,1,2,1:2)
-  !write(*,*)"# ",S_0(15,8,4,1:2)
-
 122 return
 end subroutine set_atm_coefficients
 
