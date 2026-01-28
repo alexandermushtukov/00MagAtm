@@ -37,7 +37,8 @@ subroutine pol_RT_fixE(E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau
 implicit none
 real*8,intent(in)::E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
-  call set_atm_coefficients(E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
+  call set_atm_coefficients(S_0,R,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 return
 end subroutine pol_RT_fixE
 
@@ -47,18 +48,20 @@ end subroutine pol_RT_fixE
 !  m_atm_S(:,:,:,:,:,:) - scattering matrix, (n_m,n_mu,n_mu,2*n_fi,2,2)
 !  mas_tau_TkeV(tau,T) - ...
 !========================================================================================
-subroutine set_atm_coefficients(E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+subroutine set_atm_coefficients(S_0,R,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+use black_body
 implicit none
+real*8,intent(out)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
 real*8,intent(in)::E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 real*8::pi=3.141592653589793d0
 real*8::m_atm_sigma(n_m,n_mu,n_fi,2,2),m_atm_abs_b(n_m,n_mu,2,2)
-real*8::m_coord_b(n_mu,n_fi,2),KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2)
+real*8::m_coord_b(n_mu,n_fi,2),KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
 complex*16::m_atm_S(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
 real*8::E_cyc
 integer::n_m,n_mu,n_fi
 real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),ksi_i,ksi_f
-real*8::help
-integer::i,j,k,j1,j2,k1,k2,jj
+real*8::help,delta_fi
+integer::i,j,k,j1,j2,k1,k2,jj,jj2,kk2
 complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
 real*8::NormWavesEll,NormWavesEll_cvp,NormWavesEll_cvp_,abs_mag_ff_Meszaros_new  !==function==!
 
@@ -67,7 +70,6 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   kappa_T = 0.34d0
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
  
-
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
   !== array of coordinate transformation ==!
@@ -148,8 +150,10 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     do while( j.le.n_mu )
       mu_i = -1.d0 + dmu/2 + (j-1)*dmu
       theta_i = acos(mu_i)
+      !== free-free absorption ==!
       m_atm_abs_b(i,j,1,1) = abs_mag_ff_Meszaros_new( KK_b(i,j,1),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
       m_atm_abs_b(i,j,1,2) = abs_mag_ff_Meszaros_new( KK_b(i,j,2),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
+
       !== compton scattering in B-RF ==!
       m_atm_abs_b(i,j,2,1:2) = 0.d0
       j2 = 1
@@ -157,6 +161,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
         k2 = 1
         do while( k2.le.n_fi )
           m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) + ( (abs(m_atm_S(i,j,j2,1,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,1,k2,1:2,2)))**2 )*dmu*dfi
+          R_b(i,j,j2,k2,1:2,1:2) = (abs(m_atm_S(i,j,j2,1,k2,1:2,1:2)))**2 * 3/32/pi          !== scattering redistribution function in B-field RF ==!
           k2 = k2+1
         end do
         j2 = j2+1
@@ -169,7 +174,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   end do
   write(*,*)"#done: get absorption coeffisients in B-field RF"
 
-  !== get absorption coefficients in atmospheric RF ==!
+  !== get absorption coefficients & sccattering redistribution function in atmospheric RF ==!
   i = 1
   do while( i.le.n_m )
     j = 1
@@ -178,9 +183,29 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       do while( k.le.n_fi )
         theta_ib = m_coord_b(j,k,1)
         jj = ( cos(theta_ib) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
+        fi_ib = m_coord_b(j,k,2)
         KK(i,j,k,1:2) = KK_b(i,jj,1:2)
         m_atm_sigma(i,j,k,1,1:2) = m_atm_abs_b(i,jj,1,1:2)   !== true absorption ==!
         m_atm_sigma(i,j,k,2,1:2) = m_atm_abs_b(i,jj,2,1:2)   !== absorption due to Compton pol 1  ==!
+
+        S_0(i,j,k,1:2) = m_atm_sigma(i,j,k,1,1:2) * BB_Intensity_22(E,mas_tau_TkeV(i,2))/2  !== initial thermal source function ==!
+        j2 = 1
+        do while(j2.le.n_mu)
+          k2 = 1
+          do while( k2.le.n_fi )
+            theta_fb = m_coord_b(j2,k2,1)
+            jj2 = ( cos(theta_fb) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
+            fi_fb = m_coord_b(j2,k2,2)
+            delta_fi = fi_fb - fi_ib
+            if( delta_fi.lt.0.d0 )then
+              delta_fi = delta_fi + 2*pi
+            end if
+            kk2 = fi_fb/dfi + 1
+            R(i,j,j2,k,k2,1:2,1:2) = R_b(i,jj,jj2,kk2,1:2,1:2)
+            k2 = k2 + 1
+          end do
+          j2 = j2+1
+        end do
         !write(*,*)i,j,k,m_atm_sigma(i,j,k,1:2,1:2)
         !read(*,*)
         k = k+1
@@ -195,6 +220,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
 
   write(*,*)m_atm_sigma(15,8,1,1,1:2)
   write(*,*)m_atm_sigma(15,8,1,2,1:2)
+  write(*,*)S_0(15,8,4,1:2)
 
 122 return
 end subroutine set_atm_coefficients
