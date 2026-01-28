@@ -1,16 +1,31 @@
+!=======================================================================================================
+! ...
+!=======================================================================================================
+subroutine pol_RT_fixE(E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda)
+implicit none
+real*8,intent(in)::E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda
+real*8::g14
+  g14 = 1.328d0*m_ns/R6**2
+  call set_atm_structure(E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda)
+return
+end subroutine pol_RT_fixE
+
+
+
 !========================================================================================
 !  m_atm_S(:,:,:,:,:,:) - scattering matrix, (n_m,n_mu,n_mu,2*n_fi,2,2)
 !  mas_tau_TkeV(tau,T) - ...
 !========================================================================================
-subroutine set_atm_structure()
+subroutine set_atm_structure(E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda)
 implicit none
+real*8,intent(in)::E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda
 real*8::pi=3.141592653589793d0
 real*8,allocatable::m_atm_I(:,:,:,:),m_atm_T_rho(:,:),m_atm_sigma(:,:,:,:,:),m_atm_abs_b(:,:,:,:),mas_x_rho_tau(:,:),mas_tau_TkeV(:,:),F_tau(:,:),mas_m_rho(:,:)
 real*8,allocatable::m_coord_b(:,:,:),KK_b(:,:,:),KK(:,:,:,:)
 complex*16,allocatable::m_atm_S(:,:,:,:,:,:,:)
-real*8::B12,m_ns,R6,g14,theta_b,m_min,m_max,E,E_cyc,dot_m_6,ln_Lambda
+real*8::m_min,m_max,E_cyc
 integer::n_m,n_mu,n_fi
-real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),Z,A,ksi_i,ksi_f
+real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),ksi_i,ksi_f
 real*8::help
 integer::i,j,k,j1,j2,k1,k2,jj
 complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
@@ -19,34 +34,22 @@ real*8::NormWavesEll,NormWavesEll_cvp,NormWavesEll_cvp_,abs_mag_ff_Meszaros_new 
 real*8::x_scale,kappa_T,tau_max,tau_min
 
   kappa_T = 0.34d0
-  E = 1.d0
-
-  !== physical paramters ==!
-  m_ns = 1.4d0; R6 = 1.d0
-  g14 = 1.328d0*m_ns/R6**2
-  B12 = 1.d3           !== surface B-field strength ==!
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
-  theta_b = 0.d0        !== B-field inclination with respect to the normal [rad] ==!
-  dot_m_6 = 0.d0
-  ln_Lambda = 10.d0
-  Z = 1.d0
-  A = 1.d0
-  !==========================!
  
   !== numerical paramters ==!
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
   m_max = 1.d+3        !== the maximal column dencity [g/cm^2] ==!
-  n_m  = 30
+  n_m  = 40
   n_mu = 20;  n_fi = 20
   !=========================!
+
+  dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
   allocate( m_atm_I(n_m,n_mu,n_fi,2),m_atm_T_rho(n_m,2),m_atm_S(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_coord_b(n_mu,n_fi,2) )
          !== intensity; T & rho; S-matrix ==!
   allocate( m_atm_sigma(n_m,n_mu,n_fi,2,2),m_atm_abs_b(n_m,n_mu,2,2),mas_x_rho_tau(n_m,5),mas_tau_TkeV(n_m,2),F_tau(n_m,2),mas_m_rho(n_m,2) )
          !== free-free absorption and Compton ==!
   allocate( KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2) )
-  dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
-
 
   !== set up some temperature sctructure ==!
   i = 1
@@ -68,7 +71,6 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       call cartesian2spherical( n_ib(1),n_ib(2),n_ib(3) , help,theta_ib,fi_ib )
       m_coord_b(i,j,1) = theta_ib
       m_coord_b(i,j,2) = fi_ib
-      !write(*,*)i,j,mu_i,theta_i,m_coord_b(i,j,1)
       j = j+1
     end do
     i = i+1
@@ -78,9 +80,21 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   tau_min = m_min*kappa_T
   tau_max = m_max*kappa_T
   call acc_atm_structure_4(mas_x_rho_tau,n_m,tau_min,tau_max,x_scale, &
-                           g14,mas_tau_TkeV,n_m,dot_m_6,ln_Lambda,1.d-3,F_tau)
-  mas_m_rho(1:n_m,1) = mas_x_rho_tau(1:n_m,3)/kappa_T
-  mas_m_rho(1:n_m,2) = mas_x_rho_tau(1:n_m,2)
+                           g14,mas_tau_TkeV,n_m,dot_m_6,ln_Lambda,0.d0,F_tau)
+  mas_m_rho(1:n_m,1) = mas_x_rho_tau(1:n_m,3)/kappa_T         !== colomn density coordinate ==!
+  mas_m_rho(1:n_m,2) = mas_x_rho_tau(1:n_m,2)                 !== local mass density ==!
+
+  !== check atmosphere structure ==!
+  !i=1; help = 0.d0
+  !do while(i.le.n_m)
+  !  if( i.gt.1 )then
+  !  help = help + (mas_x_rho_tau(i,1)-mas_x_rho_tau(i-1,1))*(mas_m_rho(i,2)+mas_m_rho(i-1,2))/2
+  !  end if
+  !  write(*,*)mas_m_rho(i,1:2),help
+  !  i=i+1
+  !end do
+  !read(*,*)
+
   !== now we have hydro structure of atmosphere ==!
 
   !== get ellipticities ==!
@@ -144,7 +158,6 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     do while( j.le.n_mu )
       mu_i = -1.d0 + dmu/2 + (j-1)*dmu
       theta_i = acos(mu_i)
-!write(*,*)"!!! ",KK_b(i,j,1),mas_m_rho(i,2)
       m_atm_abs_b(i,j,1,1) = abs_mag_ff_Meszaros_new( KK_b(i,j,1),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
       m_atm_abs_b(i,j,1,2) = abs_mag_ff_Meszaros_new( KK_b(i,j,2),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
       !== compton scattering in B-RF ==!
@@ -188,11 +201,11 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     write(*,*)i,mas_m_rho(i,2),KK_b(i,4,1:2)
     i = i+1
   end do
+  !== now we have absorption coefficients [cm^{-1}] ==!
 
   write(*,*)m_atm_sigma(15,8,1,1,1:2)
   write(*,*)m_atm_sigma(15,8,1,2,1:2)
 
-  !== now we have absorption coefficients ==!
 122 return
 end subroutine set_atm_structure
 
