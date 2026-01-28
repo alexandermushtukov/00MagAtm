@@ -236,12 +236,12 @@ implicit none
 integer,intent(in)::n_m,n_mu,n_fi
 real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
 real*8::I_e(n_m,n_mu,n_fi,2),S(n_m,n_mu,n_fi,2)
-integer::i,j,k,i1,i2,ii,i_pol
+integer::i,j,k,i1,i2,ii,i_pol,jj,kk
 real*8::pi=3.141592653589793d0
-real*8::dmu,mu,dSigma,tau,tau_lim,kappa
+real*8::dmu,dfi,mu,dSigma,tau,tau_lim,kappa
   tau_lim = 10.d0
   dmu = 2.d0/n_mu
-  S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
+  dfi = 2*pi/n_fi
   !== get intensity ==!
   i = 1
   do while(i.le.n_m)
@@ -302,6 +302,34 @@ real*8::dmu,mu,dSigma,tau,tau_lim,kappa
     write(*,*)
     k = k+1
   end do
+
+  !== get new souse function ==!
+  S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
+  i = 1
+  do while(i.le.n_m)
+    j = 1
+    do while(j.le.n_mu)
+      k = 1
+      do while( k.le.n_fi )
+        !== integration over (4\pi) ==!
+        jj = 1
+        do while(jj.le.n_mu)
+          kk = 1
+          do while(kk.le.n_fi)
+            S(i,j,k,1) = S(i,j,k,1) + R(i,jj,j,kk,k,1,1)*I_e(i,jj,kk,1)  + R(i,jj,j,kk,k,2,1)*I_e(i,jj,kk,2)
+            S(i,j,k,2) = S(i,j,k,2) + R(i,jj,j,kk,k,1,2)*I_e(i,jj,kk,1)  + R(i,jj,j,kk,k,2,2)*I_e(i,jj,kk,2)
+            kk = kk+1
+          end do
+          jj = jj+1
+        end do
+        k = k+1
+      end do
+      j = j+1
+    end do
+    i = i+1
+  end do
+  !== now we have updated source function ==!
+
 return
 end subroutine RT_iterrations
 
