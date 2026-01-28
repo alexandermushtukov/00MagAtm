@@ -98,7 +98,7 @@ real*8,intent(in)::E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_
 real*8::pi=3.141592653589793d0
 real*8::m_atm_abs_b(n_m,n_mu,2,2)
 real*8::m_coord_b(n_mu,n_fi,2),KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
-complex*16::m_atm_S(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
+complex*16::m_atm_S(n_m,n_mu,n_mu,n_fi,2,2)
 real*8::E_cyc
 integer::n_m,n_mu,n_fi
 real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),ksi_i,ksi_f
@@ -107,7 +107,7 @@ integer::i,j,k,j1,j2,k1,k2,jj,jj2,kk2
 complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
 real*8::NormWavesEll,NormWavesEll_cvp,NormWavesEll_cvp_,abs_mag_ff_Meszaros_new  !==function==!
 
-real*8::x_scale,kappa_T,tau_max,tau_min
+real*8::x_scale,kappa_T
 
   kappa_T = 0.34d0
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
@@ -145,7 +145,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
     i = i+1
   end do
 
-  !== pre-calculate scatterings amps ==!
+  !== pre-calculate scatterings amps in B-fiesl RF ==!
   i=1
   do while(i.le.n_m)
     j1 = 1
@@ -157,7 +157,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
         ksi_i = KK_b(i,j1,1)
         ksi_f = KK_b(i,j2,1)
         k1 = 1
-        do while( k1 .le. n_fi )
+        !do while( k1 .le. n_fi )
           fi_i = dfi/2 + (k1-1)*dfi
           theta_ib = m_coord_b(j1,k1,1)
           fi_ib = m_coord_b(j1,k1,2)
@@ -166,14 +166,14 @@ real*8::x_scale,kappa_T,tau_max,tau_min
             fi_f = dfi/2 + (k2-1)*dfi
             theta_fb = m_coord_b(j2,k2,1)
             fi_fb = m_coord_b(j2,k2,2)
-            m_atm_S(i,j1,j2,k1,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(i,j1,j2,k1,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(i,j1,j2,k1,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
-            m_atm_S(i,j1,j2,k1,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k2,1,1) = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k2,1,2) = Amp_dSigmadOmega_ell_magnitars(1,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k2,2,1) = Amp_dSigmadOmega_ell_magnitars(2,1,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+            m_atm_S(i,j1,j2,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
             k2 = k2+1
           end do
-          k1 = k1+1
-        end do
+        !  k1 = k1+1
+        !end do
         j2 = j2+1
       end do
       j1 = j1+1
@@ -183,7 +183,6 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   end do
   write(*,*)"#done: scatterings amps"
   !== now we have amplitudes of Compton scattering ==!
-
 
   !== get absorption coeffisients in B-field RF ==!
   i = 1
@@ -195,15 +194,14 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       !== free-free absorption ==!
       m_atm_abs_b(i,j,1,1) = abs_mag_ff_Meszaros_new( KK_b(i,j,1),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
       m_atm_abs_b(i,j,1,2) = abs_mag_ff_Meszaros_new( KK_b(i,j,2),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
-
       !== compton scattering in B-RF ==!
       m_atm_abs_b(i,j,2,1:2) = 0.d0
       j2 = 1
       do while( j2.le.n_mu )
         k2 = 1
         do while( k2.le.n_fi )
-          m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) + ( (abs(m_atm_S(i,j,j2,1,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,1,k2,1:2,2)))**2 )*dmu*dfi
-          R_b(i,j,j2,k2,1:2,1:2) = (abs(m_atm_S(i,j,j2,1,k2,1:2,1:2)))**2 * 3/32/pi          !== scattering redistribution function in B-field RF ==!
+          m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) + ( (abs(m_atm_S(i,j,j2,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,k2,1:2,2)))**2 )*dmu*dfi
+          R_b(i,j,j2,k2,1:2,1:2) = (abs(m_atm_S(i,j,j2,k2,1:2,1:2)))**2 * 3/32/pi          !== scattering redistribution function in B-field RF ==!
           k2 = k2+1
         end do
         j2 = j2+1
