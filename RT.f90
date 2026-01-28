@@ -35,11 +35,52 @@ end subroutine get_hydro_atm_structure
 !=======================================================================================================
 subroutine pol_RT_fixE(E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 implicit none
+real*8::pi=3.141592653589793d0
 real*8,intent(in)::E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
 real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2)
+real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2)
+real*8::flux_tot(2),dmu,dfi,mu,theta
+integer::i,k,j
+
+  dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
+
   call set_atm_coefficients(S_0,R,m_atm_sigma,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-  call RT_iterrations(S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
+
+  I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
+  i=1
+  do while(i.le.5)
+    call RT_iterrations(I_out,S,S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
+    flux_tot(1:2) = 0.d0
+   k = 1
+    do while(k.le.n_fi)
+     j = 1
+      do while(j.le.n_mu)
+        mu = -1.d0 + dmu/2 + (j-1)*dmu; theta = acos(mu)
+        flux_tot(1:2) = flux_tot(1:2) + I_out(j,k,1:2)*dmu*dfi*sin(theta)
+        !write(*,*)k,j,I_out(j,k,1:2)
+        j = j+1
+      end do
+      !write(*,*)
+      k = k+1
+    end do
+    write(*,*)"# ",i,flux_tot(1:2)
+    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S(1:n_m,1:n_mu,1:n_fi,1:2)
+    I_out_tot(1:n_mu,1:n_fi,1:2) = I_out_tot(1:n_mu,1:n_fi,1:2) + I_out(1:n_mu,1:n_fi,1:2)
+    i = i+1
+  end do
+
+  k = 1
+  do while(k.le.n_fi)
+   j = 1
+    do while(j.le.n_mu)
+      write(*,*)k*dfi,j*dmu,I_out(j,k,1:2)
+      j = j+1
+    end do
+    write(*,*)
+    k = k+1
+  end do
+  
 return
 end subroutine pol_RT_fixE
 
@@ -231,14 +272,17 @@ end subroutine set_atm_coefficients
 !==========================================================================================================================
 ! ...
 !==========================================================================================================================
-subroutine RT_iterrations(S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
+subroutine RT_iterrations(I_out,S,S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
 implicit none
+real*8,intent(out)::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2)
 integer,intent(in)::n_m,n_mu,n_fi
 real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
-real*8::I_e(n_m,n_mu,n_fi,2),S(n_m,n_mu,n_fi,2)
+real*8::I_e(n_m,n_mu,n_fi,2)
 integer::i,j,k,i1,i2,ii,i_pol,jj,kk
 real*8::pi=3.141592653589793d0
 real*8::dmu,dfi,mu,dSigma,tau,tau_lim,kappa
+real*8::kappa_T = 0.34d0
+
   tau_lim = 10.d0
   dmu = 2.d0/n_mu
   dfi = 2*pi/n_fi
@@ -290,18 +334,8 @@ real*8::dmu,dfi,mu,dSigma,tau,tau_lim,kappa
     i = i+1
   end do
   !== getting new source function ==!
-  write(*,*)"# RT done"
 
-  k = 1
-  do while(k.le.n_fi)
-    j = 1
-    do while(j.le.n_mu)
-      write(*,*)k,j,I_e(1,j,k,1:2)
-      j = j+1
-    end do
-    write(*,*)
-    k = k+1
-  end do
+  I_out(1:n_mu,1:n_fi,1:2) = I_e(1,1:n_mu,1:n_fi,1:2)
 
   !== get new souse function ==!
   S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
@@ -316,8 +350,8 @@ real*8::dmu,dfi,mu,dSigma,tau,tau_lim,kappa
         do while(jj.le.n_mu)
           kk = 1
           do while(kk.le.n_fi)
-            S(i,j,k,1) = S(i,j,k,1) + R(i,jj,j,kk,k,1,1)*I_e(i,jj,kk,1)  + R(i,jj,j,kk,k,2,1)*I_e(i,jj,kk,2)
-            S(i,j,k,2) = S(i,j,k,2) + R(i,jj,j,kk,k,1,2)*I_e(i,jj,kk,1)  + R(i,jj,j,kk,k,2,2)*I_e(i,jj,kk,2)
+            S(i,j,k,1) = S(i,j,k,1) + ( R(i,jj,j,kk,k,1,1)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,1)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+            S(i,j,k,2) = S(i,j,k,2) + ( R(i,jj,j,kk,k,1,2)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,2)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
             kk = kk+1
           end do
           jj = jj+1
@@ -329,7 +363,6 @@ real*8::dmu,dfi,mu,dSigma,tau,tau_lim,kappa
     i = i+1
   end do
   !== now we have updated source function ==!
-
 return
 end subroutine RT_iterrations
 
@@ -403,7 +436,7 @@ dimension epsilon_pv(3,3)
 real*8::M_Stokes_rot
 dimension M_Stokes_rot(4,4)
 real*8::aa,n_1,n_2
-   
+  
   B12=Ecyc/11.6d0
   call Dielectric_Tensor_Plasma_Vac(epsilon_pv,M_Stokes_rot,beta,aa,c_K_1,c_K_2,K_plus,K_min,c_Kz_1,c_K_z2,&
                                     n_1,n_2,E,theta,B12,rho,Z,A)
