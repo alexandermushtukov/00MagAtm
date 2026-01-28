@@ -10,7 +10,7 @@ real*8::x_scale,kappa_T = 0.34d0
 real*8::F_tau(n_m,2),mas_x_rho_tau(n_m,5),help
 integer::i
   !== get hydrostatical stracure of the atmosphere ==!
-  call acc_atm_structure_4(mas_x_rho_tau,n_m,tau_min,tau_max,x_scale, &
+  call acc_atm_structure_5(mas_x_rho_tau,n_m,tau_min,tau_max,x_scale, &
                            g14,mas_tau_TkeV,n_m,dot_m_6,ln_Lambda,0.d0,F_tau)
   mas_m_rho(1:n_m,1) = mas_x_rho_tau(1:n_m,3)/kappa_T         !== colomn density coordinate ==!
   mas_m_rho(1:n_m,2) = mas_x_rho_tau(1:n_m,2)                 !== local mass density ==!
@@ -37,9 +37,9 @@ subroutine pol_RT_fixE(E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau
 implicit none
 real*8,intent(in)::E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
-  call set_atm_coefficients(S_0,R,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-  call RT_iterrations(S_0,R,n_m,n_mu,n_fi)
+real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2)
+  call set_atm_coefficients(S_0,R,m_atm_sigma,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+  call RT_iterrations(S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
 return
 end subroutine pol_RT_fixE
 
@@ -49,13 +49,13 @@ end subroutine pol_RT_fixE
 !  m_atm_S(:,:,:,:,:,:) - scattering matrix, (n_m,n_mu,n_mu,2*n_fi,2,2)
 !  mas_tau_TkeV(tau,T) - ...
 !========================================================================================
-subroutine set_atm_coefficients(S_0,R,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+subroutine set_atm_coefficients(S_0,R,m_atm_sigma,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 use black_body
 implicit none
-real*8,intent(out)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
+real*8,intent(out)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2)
 real*8,intent(in)::E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 real*8::pi=3.141592653589793d0
-real*8::m_atm_sigma(n_m,n_mu,n_fi,2,2),m_atm_abs_b(n_m,n_mu,2,2)
+real*8::m_atm_abs_b(n_m,n_mu,2,2)
 real*8::m_coord_b(n_mu,n_fi,2),KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
 complex*16::m_atm_S(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
 real*8::E_cyc
@@ -214,14 +214,14 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       j = j+1
     end do
     m_atm_sigma(i,j,k,1:2,1:2) = m_atm_sigma(i,j,k,1:2,1:2) * kappa_T * mas_m_rho(i,2)  !== it is absorption coeff in [cm^{-1}] ==!
-    write(*,*)"## ",i,mas_m_rho(i,2),KK_b(i,4,1:2)
+    write(*,*)"## ",i,mas_m_rho(i,1:2),KK_b(i,4,1:2)
     i = i+1
   end do
   !== now we have absorption coefficients [cm^{-1}] ==!
 
-  write(*,*)"# ",m_atm_sigma(15,8,1,1,1:2)
-  write(*,*)"# ",m_atm_sigma(15,8,1,2,1:2)
-  write(*,*)"# ",S_0(15,8,4,1:2)
+  !write(*,*)"# ",m_atm_sigma(15,8,1,1,1:2)
+  !write(*,*)"# ",m_atm_sigma(15,8,1,2,1:2)
+  !write(*,*)"# ",S_0(15,8,4,1:2)
 
 122 return
 end subroutine set_atm_coefficients
@@ -231,14 +231,14 @@ end subroutine set_atm_coefficients
 !==========================================================================================================================
 ! ...
 !==========================================================================================================================
-subroutine RT_iterrations(S_0,R,n_m,n_mu,n_fi)
+subroutine RT_iterrations(S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
 implicit none
 integer,intent(in)::n_m,n_mu,n_fi
-real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2)
+real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
 real*8::I_e(n_m,n_mu,n_fi,2),S(n_m,n_mu,n_fi,2)
-integer::i,j,k,i1,i2,ii
+integer::i,j,k,i1,i2,ii,i_pol
 real*8::pi=3.141592653589793d0
-real*8::dmu,mu
+real*8::dmu,mu,dSigma,tau,kappa
   dmu = 2.d0/n_mu
   S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
   !== get intensity ==!
@@ -247,20 +247,41 @@ real*8::dmu,mu
     j = 1
     do while( j.le.n_mu)
       mu = -1.d0 + dmu/2 + (j-1)*dmu
-      if( mu.ge.0.d0 )then
-        !== upward propagation ==!
-        i1 = i+1;  i2 = n_m
-      else
-        !== downward propagation ==!
-        i1 = 1;  i2 = i-1
-      end if
       k = 1
       do while( k.le.n_fi )
+        tau = 0.d0
         I_e(i,j,k,1:2) = 0.d0
-        ii = i1
-        do while( ii.le.i2 )
-          I_e(i,j,k,1:2) = I_e(i,j,k,1:2) + S_0(ii,j,k,1:2)    !== fix it ==! 
-          ii = ii+1
+        i_pol = 1
+        !== calculate two polarisations separately ==!
+        do while(i_pol.le.1)
+          if( mu.ge.0.d0 )then
+            !== upward propagation ==!
+            ii = i+1
+            do while( ii.le.n_m )
+              dSigma = mas_m_rho(ii,2) - mas_m_rho(ii-1,2)         !== colomn density of ii-layer ==!
+              kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== due to abs and scattering ==!
+              tau = tau + dSigma * kappa / abs(mu)
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)*exp(-tau)    !== fix it ==!
+              !== use approximation for ... ==!
+              !== check dimensions and comment them ==!
+              ii = ii+1
+            end do
+          else
+            !== downward propagation ==!
+            ii = i-1
+            do while( ii.ge.1 )
+              if(ii.ne.1)then
+                dSigma = mas_m_rho(ii,2) - mas_m_rho(ii-1,2)
+              else
+                dSigma = mas_m_rho(ii,2)
+              end if
+              kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== due to abs and scattering ==!
+              tau = tau + dSigma * kappa / abs(mu)
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)*exp(-tau)    !== fix it ==!
+              ii = ii-1
+            end do
+          end if
+          i_pol = i_pol+1
         end do
         k = k+1
       end do
@@ -268,6 +289,9 @@ real*8::dmu,mu
     end do
     i = i+1
   end do
+
+  !== getting new source function ==!
+
   write(*,*)"# RT done"
 return
 end subroutine RT_iterrations
