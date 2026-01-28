@@ -189,7 +189,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
         m_atm_sigma(i,j,k,1,1:2) = m_atm_abs_b(i,jj,1,1:2)   !== true absorption ==!
         m_atm_sigma(i,j,k,2,1:2) = m_atm_abs_b(i,jj,2,1:2)   !== absorption due to Compton pol 1  ==!
 
-        S_0(i,j,k,1:2) = m_atm_sigma(i,j,k,1,1:2) * BB_Intensity_22(E,mas_tau_TkeV(i,2))/2  !== initial thermal source function ==!
+        S_0(i,j,k,1:2) = kappa_T * m_atm_sigma(i,j,k,1,1:2) * BB_Intensity_22(E,mas_tau_TkeV(i,2))/2  !== initial thermal source function [kappa*B] ==!
         j2 = 1
         do while(j2.le.n_mu)
           k2 = 1
@@ -213,7 +213,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       end do
       j = j+1
     end do
-    m_atm_sigma(i,j,k,1:2,1:2) = m_atm_sigma(i,j,k,1:2,1:2) * kappa_T * mas_m_rho(i,2)  !== it is absorption coeff in [cm^{-1}] ==!
+    m_atm_sigma(i,j,k,1:2,1:2) = m_atm_sigma(i,j,k,1:2,1:2) * kappa_T  !== it is opcita [cm^2/g] ==!
     write(*,*)"## ",i,mas_m_rho(i,1:2),KK_b(i,4,1:2)
     i = i+1
   end do
@@ -260,16 +260,9 @@ real*8::dmu,mu,dSigma,tau,tau_lim,kappa
             ii = i+1
             do while( (ii.le.n_m).and.(tau.lt.tau_lim) )
               dSigma = mas_m_rho(ii,2) - mas_m_rho(ii-1,2)         !== colomn density of ii-layer ==!
-              kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== due to abs and scattering ==!
+              kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               tau = tau + dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)*exp(-tau)    !== fix it ==!
-!if(i.eq.1)then
-!write(*,*)i,j,k,i_pol,I_e(i,j,k,i_pol)
-              !write(*,*)i_pol,ii,dSigma,kappa,tau,m_atm_sigma(ii,j,k,1:2,i_pol)
-!              read(*,*)
-!end if
-              !== use approximation for ... ==!
-              !== check dimensions and comment them ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/abs(mu) * exp(-tau) * dSigma   !== fix it ==!
               ii = ii+1
             end do
           else
@@ -281,9 +274,9 @@ real*8::dmu,mu,dSigma,tau,tau_lim,kappa
               else
                 dSigma = mas_m_rho(ii,2)
               end if
-              kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== due to abs and scattering ==!
+              kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               tau = tau + dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)*exp(-tau)    !== fix it ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/abs(mu) * exp(-tau) * dSigma   !== fix it ==!
               ii = ii-1
             end do
           end if
@@ -303,7 +296,7 @@ real*8::dmu,mu,dSigma,tau,tau_lim,kappa
   do while(k.le.n_fi)
     j = 1
     do while(j.le.n_mu)
-      !write(*,*)k,j,I_e(1,j,k,1:2)
+      write(*,*)k,j,I_e(1,j,k,1:2)
       j = j+1
     end do
     write(*,*)
