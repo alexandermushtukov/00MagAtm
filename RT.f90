@@ -15,7 +15,7 @@ real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_f
 real*8::help
 integer::i,j,k,j1,j2,k1,k2,jj
 complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
-real*8::NormWavesEll,NormWavesEll_cvp  !==function==!
+real*8::NormWavesEll,NormWavesEll_cvp,NormWavesEll_cvp_  !==function==!
 
 real*8::x_scale,kappa_T,tau_max,tau_min
 
@@ -25,9 +25,9 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   !== physical paramters ==!
   m_ns = 1.4d0; R6 = 1.d0
   g14 = 1.328d0*m_ns/R6**2
-  B12 = 1.d2           !== surface B-field strength ==!
+  B12 = 1.d3           !== surface B-field strength ==!
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
-  theta_b = 0.1d0        !== B-field inclination with respect to the normal [rad] ==!
+  theta_b = 0.d0        !== B-field inclination with respect to the normal [rad] ==!
   dot_m_6 = 0.d0
   ln_Lambda = 10.d0
   Z = 1.d0
@@ -36,7 +36,7 @@ real*8::x_scale,kappa_T,tau_max,tau_min
  
   !== numerical paramters ==!
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
-  m_max = 1.d+3        !== the maximal column dencity [g/cm^2] ==!
+  m_max = 1.d+2        !== the maximal column dencity [g/cm^2] ==!
   n_m  = 30
   n_mu = 20;  n_fi = 20
   !=========================!
@@ -89,10 +89,10 @@ real*8::x_scale,kappa_T,tau_max,tau_min
   do while( i.le.n_m )
     j = 1
     do while( j.le.n_mu )
-      mu_i = -1.d0 + dmu/2 + (i-1)*dmu
+      mu_i = -1.d0 + dmu/2 + (j-1)*dmu
       theta_i = acos(mu_i)
-      KK_b(i,j,1) = NormWavesEll_cvp(1,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== X-mode ==!
-      KK_b(i,j,2) = NormWavesEll_cvp(2,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== O-mode ==!
+      KK_b(i,j,1) = NormWavesEll_cvp_(2,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== X-mode ==!
+      KK_b(i,j,2) = NormWavesEll_cvp_(1,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== O-mode ==!
       j = j+1
     end do
     i = i+1
@@ -184,11 +184,13 @@ real*8::x_scale,kappa_T,tau_max,tau_min
       end do
       j = j+1
     end do
+    write(*,*)i,mas_m_rho(i,2),KK_b(i,4,1:2)
     i = i+1
   end do
 
-  write(*,*)m_atm_sigma(5,8,1,1,1:2)
-  write(*,*)m_atm_sigma(5,8,1,2,1:2)
+  !write(*,*)m_atm_sigma(5,8,1,1,1:2)
+  !write(*,*)m_atm_sigma(5,8,1,2,1:2)
+
 
   !== now we have absorption coefficients ==!
 122 return
@@ -243,3 +245,35 @@ integer::det
 
 return
 end function Amp_dSigmadOmega_ell_magnitars
+
+
+
+!====================================================================================================================
+! Elliptisity of normal waves: (-i)(Ey/Ex), where Oy \in (k,B), Ox \perp (k,B).
+! Cold plasma + vacuum effects are taken into account.
+!   alpha - defines the type of photon: X-mode (alpha=1) or O-mode (alpha=0 or 2)
+! This definition of elliptisity of related to the one from Lai(2003): NormWavesEll = -K .
+! [E]=[E_cyc]=[keV].
+!====================================================================================================================
+real*8 function NormWavesEll_cvp_(alpha,E,Ecyc,theta,rho,Z,A)
+implicit none
+integer,intent(in)::alpha
+real*8,intent(in)::E,Ecyc,theta,rho,Z,A
+real*8::B12
+real*8::K_1,K_2,Kz_1,Kz_2
+complex*16::beta,epsilon_pv,c_K_1,c_K_2,c_Kz_1,c_K_z2,K_plus,K_min
+dimension epsilon_pv(3,3)
+real*8::M_Stokes_rot
+dimension M_Stokes_rot(4,4)
+real*8::aa,n_1,n_2
+   
+  B12=Ecyc/11.6d0
+  call Dielectric_Tensor_Plasma_Vac(epsilon_pv,M_Stokes_rot,beta,aa,c_K_1,c_K_2,K_plus,K_min,c_Kz_1,c_K_z2,&
+                                    n_1,n_2,E,theta,B12,rho,Z,A)
+  if(alpha.eq.1)then
+    NormWavesEll_cvp_ = -real(K_plus)
+  else
+    NormWavesEll_cvp_ = -real(K_min)
+  end if
+return
+end function NormWavesEll_cvp_
