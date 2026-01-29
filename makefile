@@ -77,7 +77,7 @@ c : $(objects_math) $(objects_phys) $(objects_astro) $(objects)
 	gfortran -fopenmp -o c $(objects_math) $(objects_phys)  $(objects_astro) $(objects)
 
 ./obj/c.o : c.f90
-	gfortran -c -o ./obj/c.o c.f90
+	gfortran -fopenmp -c -o ./obj/c.o c.f90
 ./obj/RT.o : RT.f90
 	gfortran -c -o ./obj/RT.o RT.f90
 ./obj/RT_NonPolarized.o : RT_NonPolarized.f90
