@@ -51,9 +51,10 @@ integer::i,k,j
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   i=1
   do while(i.le.5)
+    write(*,*)"# iterration ",i
     call RT_iterrations(I_out,S,S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
     flux_tot(1:2) = 0.d0
-   k = 1
+    k = 1
     do while(k.le.n_fi)
      j = 1
       do while(j.le.n_mu)
@@ -184,7 +185,7 @@ real*8::x_scale,kappa_T
       end do
       j1 = j1+1
     end do
-    !write(*,*)"# ",i,n_m
+    write(*,*)"# ",i,n_m
     i = i+1
   end do
   !write(*,*)"#done: scatterings amps"
@@ -219,7 +220,7 @@ real*8::x_scale,kappa_T
     end do
     i = i+1
   end do
-  !write(*,*)"#done: get absorption coeffisients in B-field RF"
+  write(*,*)"#done: get absorption coeffisients in B-field RF"
 
   !== get absorption coefficients & sccattering redistribution function in atmospheric RF ==!
   i = 1
@@ -260,7 +261,7 @@ real*8::x_scale,kappa_T
       j = j+1
     end do
     m_atm_sigma(i,j,k,1:2,1:2) = m_atm_sigma(i,j,k,1:2,1:2) * kappa_T  !== it is opcita [cm^2/g] ==!
-    !write(*,*)"## ",i,mas_m_rho(i,1:2),KK_b(i,4,1:2)
+    write(*,*)"## ",i,mas_m_rho(i,1:2),KK_b(i,4,1:2)
     i = i+1
   end do
 122 return
@@ -293,11 +294,12 @@ real*8::kappa_T = 0.34d0
       mu = -1.d0 + dmu/2 + (j-1)*dmu
       k = 1
       do while( k.le.n_fi )
-        tau = 0.d0
+        !tau = 0.d0
         I_e(i,j,k,1:2) = 0.d0
         i_pol = 1
         !== calculate two polarisations separately ==!
         do while(i_pol.le.2)
+          tau = 0.d0
           if( mu.ge.0.d0 )then
             !== upward propagation ==!
             ii = i+1
