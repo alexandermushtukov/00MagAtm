@@ -46,12 +46,12 @@ integer::i,k,j
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
-  call set_atm_coefficients(S_0,R,m_atm_sigma,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+  call set_atm_coefficients(S_0,R,m_atm_sigma,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   flux_tot(1:2) = 0.d0
   i=1
-  do while(i.le.3)
+  do while(i.le.1)
     call RT_iterrations(I_out,S,S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
     k = 1
     do while(k.le.n_fi)
@@ -158,6 +158,7 @@ real*8::x_scale,kappa_T
         mu_f = -1.d0 + dmu/2 + (j2-1)*dmu; theta_f = acos(mu_f)
         ksi_i = KK_b(i,j1,1)
         ksi_f = KK_b(i,j2,1)
+        k1 = 1
         fi_i = dfi/2 + (k1-1)*dfi
         theta_ib = m_coord_b(j1,k1,1)
         fi_ib = m_coord_b(j1,k1,2)
@@ -225,27 +226,29 @@ real*8::x_scale,kappa_T
       k = 1
       do while( k.le.n_fi )
         theta_ib = m_coord_b(j,k,1)
-        jj = ( cos(theta_ib) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
-        !jj = max(1, min(n_mu, int((cos(theta_ib)+1.d0)/dmu) + 1))
+        !jj = ( cos(theta_ib) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
+        jj = max(1, min(n_mu, int((cos(theta_ib)+1.d0)/dmu) + 1))
         fi_ib = m_coord_b(j,k,2)
         KK(i,j,k,1:2) = KK_b(i,jj,1:2)
         m_atm_sigma(i,j,k,1,1:2) = m_atm_abs_b(i,jj,1,1:2)   !== true absorption ==!
         m_atm_sigma(i,j,k,2,1:2) = m_atm_abs_b(i,jj,2,1:2)   !== absorption due to Compton pol 1  ==!
 
-        S_0(i,j,k,1:2) = kappa_T * m_atm_sigma(i,j,k,1,1:2) * BB_Intensity_22(E,mas_tau_TkeV(i,2))/2  !== initial thermal source function [kappa*B] ==!
+        S_0(i,j,k,1:2) = BB_Intensity_22(E,mas_tau_TkeV(i,2))/2 * kappa_T * m_atm_sigma(i,j,k,1,1:2)   !== initial thermal source function [kappa*B] ==!
         j2 = 1
         do while(j2.le.n_mu)
           k2 = 1
           do while( k2.le.n_fi )
             theta_fb = m_coord_b(j2,k2,1)
-            jj2 = ( cos(theta_fb) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
+            !jj2 = ( cos(theta_fb) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
+            jj2 = max(1, min(n_mu, int((cos(theta_fb)+1.d0)/dmu) + 1))
             fi_fb = m_coord_b(j2,k2,2)
             delta_fi = fi_fb - fi_ib
             if( delta_fi.lt.0.d0 )then
               delta_fi = delta_fi + 2*pi
             end if
-            kk2 = fi_fb/dfi + 1
+            !kk2 = fi_fb/dfi + 1
             !kk2 = max(1, min(n_fi, int(fi_fb/dfi) + 1))
+            kk2 = max(1, min(n_fi, int(delta_fi/dfi) + 1))
             R(i,j,j2,k,k2,1:2,1:2) = R_b(i,jj,jj2,kk2,1:2,1:2)
             k2 = k2 + 1
           end do
@@ -301,10 +304,10 @@ real*8::kappa_T = 0.34d0
             !== upward propagation ==!
             ii = i+1
             do while( (ii.le.n_m).and.(tau.lt.tau_lim) )
-              dSigma = mas_m_rho(ii,2) - mas_m_rho(ii-1,2)         !== colomn density of ii-layer ==!
+              dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)         !== colomn density of ii-layer ==!
               kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * ( 1.d0 - exp(-dtau) ) * dSigma /abs(mu) * exp(-tau)   !== fix it ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)   !== fix it ==!
               tau = tau + dtau
               ii = ii+1
             end do
@@ -313,13 +316,13 @@ real*8::kappa_T = 0.34d0
             ii = i-1
             do while( ii.ge.1 )
               if((ii.ne.1).and.(tau.lt.tau_lim))then
-                dSigma = mas_m_rho(ii,2) - mas_m_rho(ii-1,2)
+                dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)
               else
-                dSigma = mas_m_rho(ii,2)
+                dSigma = mas_m_rho(ii,1)
               end if
               kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * ( 1.d0 - exp(-dtau) )* dSigma /abs(mu) * exp(-tau)    !== fix it ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)* dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)    !== fix it ==!
               tau = tau + dtau
               ii = ii-1
             end do
