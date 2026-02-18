@@ -50,6 +50,7 @@ integer::i,k,j
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   flux_tot(1:2) = 0.d0
+  !== start iterrations ==!
   i=1
   do while(i.le.1)
     call RT_iterrations(I_out,S,S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
@@ -226,7 +227,6 @@ real*8::x_scale,kappa_T
       k = 1
       do while( k.le.n_fi )
         theta_ib = m_coord_b(j,k,1)
-        !jj = ( cos(theta_ib) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
         jj = max(1, min(n_mu, int((cos(theta_ib)+1.d0)/dmu) + 1))
         fi_ib = m_coord_b(j,k,2)
         KK(i,j,k,1:2) = KK_b(i,jj,1:2)
@@ -239,15 +239,12 @@ real*8::x_scale,kappa_T
           k2 = 1
           do while( k2.le.n_fi )
             theta_fb = m_coord_b(j2,k2,1)
-            !jj2 = ( cos(theta_fb) + 1.d0 )/dmu + 1    !== fix if: improve adding interpolation ==!
             jj2 = max(1, min(n_mu, int((cos(theta_fb)+1.d0)/dmu) + 1))
             fi_fb = m_coord_b(j2,k2,2)
             delta_fi = fi_fb - fi_ib
             if( delta_fi.lt.0.d0 )then
               delta_fi = delta_fi + 2*pi
             end if
-            !kk2 = fi_fb/dfi + 1
-            !kk2 = max(1, min(n_fi, int(fi_fb/dfi) + 1))
             kk2 = max(1, min(n_fi, int(delta_fi/dfi) + 1))
             R(i,j,j2,k,k2,1:2,1:2) = R_b(i,jj,jj2,kk2,1:2,1:2)
             k2 = k2 + 1
@@ -283,7 +280,7 @@ real*8::pi=3.141592653589793d0
 real*8::dmu,dfi,mu,dSigma,tau,dtau,tau_lim,kappa
 real*8::kappa_T = 0.34d0
 
-  tau_lim = 10.d0
+  tau_lim = 50.d0   !== the maximal optical distance b/w points ==!
   dmu = 2.d0/n_mu
   dfi = 2*pi/n_fi
   !== get intensity ==!
@@ -301,18 +298,22 @@ real*8::kappa_T = 0.34d0
         do while(i_pol.le.2)
           tau = 0.d0
           if( mu.ge.0.d0 )then
-            !== upward propagation ==!
+            !== upward propagation: accounting for underling layers ==!
             ii = i+1
             do while( (ii.le.n_m).and.(tau.lt.tau_lim) )
-              dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)         !== colomn density of ii-layer ==!
+              dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)                       !== colomn density of ii-layer ==!
               kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
               I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)   !== fix it ==!
               tau = tau + dtau
+!if( i.eq.1 )then
+!write(*,*)i,ii,i_pol,mu,m_atm_sigma(ii,j,k,1,i_pol) , m_atm_sigma(ii,j,k,2,i_pol),S_0(ii,j,k,i_pol),dSigma,dtau
+!read(*,*)
+!end if
               ii = ii+1
             end do
           else
-            !== downward propagation ==!
+            !== downward propagation: accounting for upper layers ==!
             ii = i-1
             do while( ii.ge.1 )
               if((ii.ne.1).and.(tau.lt.tau_lim))then
@@ -322,14 +323,17 @@ real*8::kappa_T = 0.34d0
               end if
               kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)* dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)    !== fix it ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)    !== fix it ==!
               tau = tau + dtau
+!if( i.eq.1 )then
+!write(*,*)i,ii,i_pol,mu,m_atm_sigma(ii,j,k,1,i_pol) , m_atm_sigma(ii,j,k,2,i_pol),S_0(ii,j,k,i_pol),dSigma,dtau
+!read(*,*)
+!nd if
               ii = ii-1
             end do
           end if
           i_pol = i_pol+1
         end do
-
         k = k+1
       end do
       j = j+1
@@ -458,6 +462,7 @@ end function NormWavesEll_cvp_
 ! Note that the absorption cross secton is dependent in local density (proportional).
 ! Temperature participates in sigma_0 only.
 ! (4.4.37) Meszaros 1992.
+! We provide this function with the ellipticity of initial photons. 
 !================================================================================================================
 real*8 function abs_mag_ff_Meszaros_new(K_j,E,E_cyc,T_keV,theta,Z,A,rho)
 use abs_mag_ff_Meszaros
@@ -482,3 +487,5 @@ real*8::sigma_0
   abs_mag_ff_Meszaros_new = res*sigma_0
 return
 end function abs_mag_ff_Meszaros_new
+
+
