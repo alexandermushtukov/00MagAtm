@@ -39,20 +39,21 @@ real*8,intent(out)::flux_tot(2)
 real*8::pi=3.141592653589793d0
 real*8,intent(in)::E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
+real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
 real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2)
 real*8::dmu,dfi,mu,theta
 integer::i,k,j
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
-  call set_atm_coefficients(S_0,R,m_atm_kappa,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+  call set_atm_coefficients(S_therm,R,m_atm_kappa,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
-  flux_tot(1:2) = 0.d0
   !== start iterrations ==!
+  S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)
   i=1
-  do while(i.le.1)
+  do while(i.le.10)
+    flux_tot(1:2) = 0.d0
     call RT_iterrations(I_out,S,S_0,R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
     k = 1
     do while(k.le.n_fi)
@@ -66,9 +67,8 @@ integer::i,k,j
       !write(*,*)
       k = k+1
     end do
-    !write(*,*)"#iter ",i,flux_tot(1:2)
-    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S(1:n_m,1:n_mu,1:n_fi,1:2)
-    I_out_tot(1:n_mu,1:n_fi,1:2) = I_out_tot(1:n_mu,1:n_fi,1:2) + I_out(1:n_mu,1:n_fi,1:2)
+    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2) + S(1:n_m,1:n_mu,1:n_fi,1:2)
+    I_out_tot(1:n_mu,1:n_fi,1:2) = I_out(1:n_mu,1:n_fi,1:2)
     i = i+1
   end do
 
@@ -307,7 +307,9 @@ real*8::kappa_T = 0.34d0
               dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)                       !== colomn density of ii-layer ==!
               kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
+              if( dtau.ne.0.d0 )then
+                I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
+              end if
               !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
               tau = tau + dtau
               ii = ii+1
@@ -323,7 +325,9 @@ real*8::kappa_T = 0.34d0
               end if
               kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
+              if( dtau.ne.0.d0 )then
+                I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
+              end if
               !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
               tau = tau + dtau
               ii = ii-1
