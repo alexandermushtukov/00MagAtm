@@ -307,12 +307,9 @@ real*8::kappa_T = 0.34d0
               dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)                       !== colomn density of ii-layer ==!
               kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)   !== fix it ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
+              !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
               tau = tau + dtau
-!if( i.eq.1 )then
-!write(*,*)i,ii,i_pol,mu,m_atm_kappa(ii,j,k,1,i_pol) , m_atm_kappa(ii,j,k,2,i_pol),S_0(ii,j,k,i_pol),dSigma,dtau
-!read(*,*)
-!end if
               ii = ii+1
             end do
           else
@@ -326,12 +323,9 @@ real*8::kappa_T = 0.34d0
               end if
               kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)    !== fix it ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
+              !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
               tau = tau + dtau
-!if( i.eq.1 )then
-!write(*,*)i,ii,i_pol,mu,m_atm_kappa(ii,j,k,1,i_pol) , m_atm_kappa(ii,j,k,2,i_pol),S_0(ii,j,k,i_pol),dSigma,dtau
-!read(*,*)
-!nd if
               ii = ii-1
             end do
           end if
@@ -347,7 +341,7 @@ real*8::kappa_T = 0.34d0
 
   I_out(1:n_mu,1:n_fi,1:2) = I_e(1,1:n_mu,1:n_fi,1:2)
 
-  !== get new souse function ==!
+  !== get new souse function, in units kappa*B_22 ==!
   S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
   i = 1
   do while(i.le.n_m)
