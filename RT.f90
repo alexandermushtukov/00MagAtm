@@ -60,7 +60,7 @@ integer::i,k,j
      j = 1
       do while(j.le.n_mu)
         mu = -1.d0 + dmu/2 + (j-1)*dmu; theta = acos(mu)
-        flux_tot(1:2) = flux_tot(1:2) + I_out(j,k,1:2)*dmu*dfi*sin(theta)
+        flux_tot(1:2) = flux_tot(1:2) + I_out(j,k,1:2)*mu * dmu*dfi  !sin(theta)
         !write(*,*)k,j,I_out(j,k,1:2)
         j = j+1
       end do
@@ -112,8 +112,9 @@ real*8::help,delta_fi
 integer::i,j,k,j1,j2,k1,k2,jj,jj2,kk2
 complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
 real*8::NormWavesEll,NormWavesEll_cvp,NormWavesEll_cvp_,abs_mag_ff_Meszaros_new  !==function==!
-
 real*8::x_scale,kappa_T
+real*8 :: xk,frac
+integer :: k0
 
   kappa_T = 0.34d0
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
@@ -230,7 +231,11 @@ real*8::x_scale,kappa_T
       k = 1
       do while( k.le.n_fi )
         theta_ib = m_coord_b(j,k,1)
-        jj = max(1, min(n_mu, int((cos(theta_ib)+1.d0)/dmu) + 1))
+        !jj = max(1, min(n_mu, int((cos(theta_ib)+1.d0)/dmu) + 1))
+
+        jj = nint( (cos(theta_ib) + 1.d0 - dmu/2.d0) / dmu ) + 1
+        jj = max(1, min(n_mu, jj))
+
         fi_ib = m_coord_b(j,k,2)
         KK(i,j,k,1:2) = KK_b(i,jj,1:2)
         m_atm_kappa(i,j,k,1,1:2) = m_atm_abs_b(i,jj,1,1:2) * kappa_T   !== true absorption ==!
@@ -242,14 +247,24 @@ real*8::x_scale,kappa_T
           k2 = 1
           do while( k2.le.n_fi )
             theta_fb = m_coord_b(j2,k2,1)
-            jj2 = max(1, min(n_mu, int((cos(theta_fb)+1.d0)/dmu) + 1))
+            !jj2 = max(1, min(n_mu, int((cos(theta_fb)+1.d0)/dmu) + 1))
+
+            jj2 = nint( (cos(theta_fb) + 1.d0 - dmu/2.d0) / dmu ) + 1
+            jj2 = max(1, min(n_mu, jj2))
+
             fi_fb = m_coord_b(j2,k2,2)
+
             delta_fi = fi_fb - fi_ib
-            if( delta_fi.lt.0.d0 )then
-              delta_fi = delta_fi + 2*pi
-            end if
-            kk2 = max(1, min(n_fi, int(delta_fi/dfi) + 1))
-            R(i,j,j2,k,k2,1:2,1:2) = R_b(i,jj,jj2,kk2,1:2,1:2)
+            ! wrap to [0,2pi)
+            delta_fi = delta_fi - 2*pi*floor(delta_fi/(2*pi))
+            ! (эквивалент if, но работает и для >2pi)
+            xk   = delta_fi/dfi           ! in [0, n_fi)
+            k0   = int(xk) + 1            ! 1..n_fi
+            frac = xk - dble(k0-1)        ! 0..1
+            k1 = k0 + 1
+            if (k1.gt.n_fi) k1 = 1        ! periodicity
+            R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2) + frac*R_b(i,jj,jj2,k1,1:2,1:2)
+
             k2 = k2 + 1
           end do
           j2 = j2+1
