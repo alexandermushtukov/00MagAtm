@@ -39,21 +39,21 @@ real*8,intent(out)::flux_tot(2)
 real*8::pi=3.141592653589793d0
 real*8,intent(in)::E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2)
+real*8::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
 real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2)
 real*8::dmu,dfi,mu,theta
 integer::i,k,j
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
-  call set_atm_coefficients(S_0,R,m_atm_sigma,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+  call set_atm_coefficients(S_0,R,m_atm_kappa,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   flux_tot(1:2) = 0.d0
   !== start iterrations ==!
   i=1
   do while(i.le.1)
-    call RT_iterrations(I_out,S,S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
+    call RT_iterrations(I_out,S,S_0,R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
     k = 1
     do while(k.le.n_fi)
      j = 1
@@ -89,14 +89,17 @@ end subroutine pol_RT_fixE
 
 
 
-!========================================================================================
-!  m_atm_S(:,:,:,:,:,:) - scattering matrix, (n_m,n_mu,n_mu,2*n_fi,2,2)
+!==============================================================================================================================
+!  Subroutine pre-calculates souurce function in the atmosphere and scattering redistributoon function.
+!    S_0 - source function [kappa*B_22]
+!    R - redistrubution function [1/ster]
+!    m_atm_kappa - map of opaity [cm^2/g]
 !  mas_tau_TkeV(tau,T) - ...
-!========================================================================================
-subroutine set_atm_coefficients(S_0,R,m_atm_sigma,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+!==============================================================================================================================
+subroutine set_atm_coefficients(S_0,R,m_atm_kappa,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 use black_body
 implicit none
-real*8,intent(out)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2)
+real*8,intent(out)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
 real*8,intent(in)::E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 real*8::pi=3.141592653589793d0
 real*8::m_atm_abs_b(n_m,n_mu,2,2)
@@ -195,10 +198,10 @@ real*8::x_scale,kappa_T
     do while( j.le.n_mu )
       mu_i = -1.d0 + dmu/2 + (j-1)*dmu
       theta_i = acos(mu_i)
-      !== free-free absorption ==!
+      !== free-free absorption: cross section in units of sigma_T ==!
       m_atm_abs_b(i,j,1,1) = abs_mag_ff_Meszaros_new( KK_b(i,j,1),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )
       m_atm_abs_b(i,j,1,2) = abs_mag_ff_Meszaros_new( KK_b(i,j,2),E,E_cyc,mas_tau_TkeV(i,2),theta_i,Z,A,mas_m_rho(i,2) )  !== ?: does it account for rho? ==!
-      !== compton scattering in B-RF ==!
+      !== compton scattering in B-RF: cross section in units of sigma_T ==!
       m_atm_abs_b(i,j,2,1:2) = 0.d0
       j2 = 1
       do while( j2.le.n_mu )
@@ -206,7 +209,7 @@ real*8::x_scale,kappa_T
         do while( k2.le.n_fi )
           m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) &
                                + ( (abs(m_atm_S(i,j,j2,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,k2,1:2,2)))**2 )*dmu*dfi
-          R_b(i,j,j2,k2,1:2,1:2) = (abs(m_atm_S(i,j,j2,k2,1:2,1:2)))**2 * 3/32/pi          !== scattering redistribution function in B-field RF ==!
+          R_b(i,j,j2,k2,1:2,1:2) = (abs(m_atm_S(i,j,j2,k2,1:2,1:2)))**2 * 3/32/pi          !== scattering redistribution function in B-field RF [1/ster] ==!
           k2 = k2+1
         end do
         j2 = j2+1
@@ -230,10 +233,10 @@ real*8::x_scale,kappa_T
         jj = max(1, min(n_mu, int((cos(theta_ib)+1.d0)/dmu) + 1))
         fi_ib = m_coord_b(j,k,2)
         KK(i,j,k,1:2) = KK_b(i,jj,1:2)
-        m_atm_sigma(i,j,k,1,1:2) = m_atm_abs_b(i,jj,1,1:2)   !== true absorption ==!
-        m_atm_sigma(i,j,k,2,1:2) = m_atm_abs_b(i,jj,2,1:2)   !== absorption due to Compton pol 1  ==!
+        m_atm_kappa(i,j,k,1,1:2) = m_atm_abs_b(i,jj,1,1:2) * kappa_T   !== true absorption ==!
+        m_atm_kappa(i,j,k,2,1:2) = m_atm_abs_b(i,jj,2,1:2) * kappa_T   !== absorption due to Compton  ==!
 
-        S_0(i,j,k,1:2) = BB_Intensity_22(E,mas_tau_TkeV(i,2))/2 * kappa_T * m_atm_sigma(i,j,k,1,1:2)   !== initial thermal source function [kappa*B] ==!
+        S_0(i,j,k,1:2) = BB_Intensity_22(E,mas_tau_TkeV(i,2))/2 * m_atm_kappa(i,j,k,1,1:2)   !== initial thermal source function [kappa*B_22] ==!
         j2 = 1
         do while(j2.le.n_mu)
           k2 = 1
@@ -251,13 +254,13 @@ real*8::x_scale,kappa_T
           end do
           j2 = j2+1
         end do
-        !write(*,*)i,j,k,m_atm_sigma(i,j,k,1:2,1:2)
+        !write(*,*)i,j,k,m_atm_kappa(i,j,k,1:2,1:2)
         !read(*,*)
         k = k+1
       end do
       j = j+1
     end do
-    m_atm_sigma(i,1:n_mu,1:n_fi,1:2,1:2) = m_atm_sigma(i,1:n_mu,1:n_fi,1:2,1:2) * kappa_T  !== it is opcita [cm^2/g] ==!
+    !m_atm_kappa(i,1:n_mu,1:n_fi,1:2,1:2) = m_atm_kappa(i,1:n_mu,1:n_fi,1:2,1:2)  !== it is opcity [cm^2/g] ==!
     !write(*,*)"## ",i,mas_m_rho(i,1:2),KK_b(i,4,1:2)
     i = i+1
   end do
@@ -269,11 +272,11 @@ end subroutine set_atm_coefficients
 !==========================================================================================================================
 ! ...
 !==========================================================================================================================
-subroutine RT_iterrations(I_out,S,S_0,R,m_atm_sigma,mas_m_rho,n_m,n_mu,n_fi)
+subroutine RT_iterrations(I_out,S,S_0,R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
 implicit none
 real*8,intent(out)::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_sigma(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
+real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
 real*8::I_e(n_m,n_mu,n_fi,2)
 integer::i,j,k,i1,i2,ii,i_pol,jj,kk
 real*8::pi=3.141592653589793d0
@@ -283,7 +286,7 @@ real*8::kappa_T = 0.34d0
   tau_lim = 50.d0   !== the maximal optical distance b/w points ==!
   dmu = 2.d0/n_mu
   dfi = 2*pi/n_fi
-  !== get intensity ==!
+  !== get intensity map ==!
   i = 1
   do while(i.le.n_m)
     j = 1
@@ -302,12 +305,12 @@ real*8::kappa_T = 0.34d0
             ii = i+1
             do while( (ii.le.n_m).and.(tau.lt.tau_lim) )
               dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)                       !== colomn density of ii-layer ==!
-              kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
+              kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
               I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)   !== fix it ==!
               tau = tau + dtau
 !if( i.eq.1 )then
-!write(*,*)i,ii,i_pol,mu,m_atm_sigma(ii,j,k,1,i_pol) , m_atm_sigma(ii,j,k,2,i_pol),S_0(ii,j,k,i_pol),dSigma,dtau
+!write(*,*)i,ii,i_pol,mu,m_atm_kappa(ii,j,k,1,i_pol) , m_atm_kappa(ii,j,k,2,i_pol),S_0(ii,j,k,i_pol),dSigma,dtau
 !read(*,*)
 !end if
               ii = ii+1
@@ -321,12 +324,12 @@ real*8::kappa_T = 0.34d0
               else
                 dSigma = mas_m_rho(ii,1)
               end if
-              kappa = m_atm_sigma(ii,j,k,1,i_pol) + m_atm_sigma(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
+              kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
               I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) ) * exp(-tau)    !== fix it ==!
               tau = tau + dtau
 !if( i.eq.1 )then
-!write(*,*)i,ii,i_pol,mu,m_atm_sigma(ii,j,k,1,i_pol) , m_atm_sigma(ii,j,k,2,i_pol),S_0(ii,j,k,i_pol),dSigma,dtau
+!write(*,*)i,ii,i_pol,mu,m_atm_kappa(ii,j,k,1,i_pol) , m_atm_kappa(ii,j,k,2,i_pol),S_0(ii,j,k,i_pol),dSigma,dtau
 !read(*,*)
 !nd if
               ii = ii-1
