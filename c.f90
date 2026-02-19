@@ -2,14 +2,15 @@
 !======================================================================
 program MagAtm
 use omp_lib
+use black_body
 implicit none
 real*8::pi=3.141592653589793d0
 real*8::E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda,T_eff    !== physical parameters ==!
 real*8::m_min,m_max,kappa_T,tau_min,tau_max
 integer::n_m,n_mu,n_fi,i,n_E
-real*8::g14,E_min,E_max,dE
+real*8::g14,E_min,E_max,dE,F_E_target,F_target,flux
 real*8,allocatable::mas_tau_TkeV(:,:),mas_m_rho(:,:),flux_tot(:,:),flux_E(:,:)
-integer::n_stream,i_task
+integer::n_stream,i_task,i_iter
 
   200 format (100(es11.4,"   ") )
   !!call test_absorption_mag_ff(); goto 144
@@ -18,7 +19,7 @@ integer::n_stream,i_task
   n_stream = 2
 
   !== physical paramters ==!
-  E = 2.d0
+  T_eff = 2.d0
   m_ns = 1.4d0
   R6 = 1.d0
   B12 = 1.d2
@@ -27,17 +28,16 @@ integer::n_stream,i_task
   A = 1.d0
   dot_m_6 = 0.d0
   ln_Lambda = 10.d0
-  T_eff = 0.5d0
   !==========================!
   g14 = 1.328d0*m_ns/R6**2
 
   !== numerical paramters ==!
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
   m_max = 1.d+4        !== the maximal column dencity [g/cm^2] ==!
-  n_m  = 400 !400
+  n_m  = 300 !400
   n_mu = 8   !18
   n_fi = 1   !2 !18
-  n_E = 40
+  n_E = 30
   E_min = 0.1d0
   E_max = 5.d0
   !=======================!
@@ -52,28 +52,44 @@ integer::n_stream,i_task
   i = 1
   do while( i.le. n_m )
     mas_tau_TkeV(i,1) = m_min * (m_max/m_min)**( dble(i-1) / dble(n_m-1) )
-    mas_tau_TkeV(i,2) = 0.5d0 ! + 2.d0 * i/n_m
+    mas_tau_TkeV(i,2) = T_eff ! + 2.d0 * i/n_m
     i = i+1
   end do
 
-  call get_hydro_atm_structure(mas_m_rho,g14,dot_m_6,ln_Lambda,tau_min,tau_max,n_m,mas_tau_TkeV)
+  !== teperature iterrrations ==!
+  i_iter = 0
+  do while(i_iter.le.2)
+    !== get hydro structure of the atmosphere ==!
+    call get_hydro_atm_structure(mas_m_rho,g14,dot_m_6,ln_Lambda,tau_min,tau_max,n_m,mas_tau_TkeV)
 
-  flux_tot(1:n_m,1:2) = 0.d0
-  i = 1
-  do while(i.le.n_E)
-    E = E_min * (E_max/E_min)**( real(i-1) / real(n_E-1) )
-    dE  = E*( (E_max/E_min)**(1.0/(n_E-1)) - 1.0 )
-    call pol_RT_fixE(flux_E,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-    !write(*,200)E,flux_E(1,1:2)
-    flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + flux_E(1:n_m,1:2)*dE
-    !write(*,200)E,flux_tot(1:14,1)
-    i = i+1
-  end do
+    F_target = 0.d0
+    flux_tot(1:n_m,1:2) = 0.d0
+    i = 1
+    do while(i.le.n_E)
+      E = E_min * (E_max/E_min)**( real(i-1) / real(n_E-1) )
+      F_E_target = pi * BB_Intensity_22(E,T_eff)
+      dE  = E*( (E_max/E_min)**(1.0/(n_E-1)) - 1.0 )
+      call pol_RT_fixE(flux_E,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+      !write(*,200)E,flux_E(1,1:2)
+      flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + flux_E(1:n_m,1:2)*dE
+      F_target = F_target + F_E_target*dE
+      !write(*,200)E,flux_tot(1:14,1)
+      i = i+1
+    end do
 
-  i = 1
-  do while(i.le.n_m)
-    write(*,*)i,flux_tot(i,1:2)
-    i = i+1
+    i = 1
+    do while(i.le.n_m)
+      flux = flux_tot(i,1)+flux_tot(i,2)
+      if( flux.le.0.d0 )then
+        flux = F_E_target/2
+      end if
+      mas_tau_TkeV(i,2) = mas_tau_TkeV(i,2) * ( F_E_target/ flux )**0.25
+      write(*,*)i,flux_tot(i,1:2),F_E_target,mas_tau_TkeV(i,2)
+      i = i+1
+    end do
+    write(*,*)
+
+    i_iter = i_iter+1
   end do
 
   goto 144
