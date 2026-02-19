@@ -45,7 +45,7 @@ end function Amp_dSigmadOmega_ell_magnitars
 
 
 !========================================================================================================
-! Function calculates complex scattering amplitudes for electrons.
+! Function calculates complex scattering amplitudes for protons.
 !   ksi_i, ksi_f - ellipticities of photons before and after scattering event.
 !   Note: we assume coherent scattering.
 !   See appendix B in 2204.12271

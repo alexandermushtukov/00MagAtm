@@ -59,7 +59,7 @@ integer::i,k,j
   !== start iterrations ==!
   S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)
   i=1
-  do while(i.le.3)
+  do while(i.le.1)
     flux_tot(1:n_m,1:2) = 0.d0
     call RT_iterrations(I_e,S,S_0,R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
     k = 1
@@ -110,13 +110,13 @@ real*8,intent(in)::E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_
 real*8::pi=3.141592653589793d0
 real*8::m_atm_abs_b(n_m,n_mu,2,2)
 real*8::m_coord_b(n_mu,n_fi,2),KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
-complex*16::m_atm_S(n_m,n_mu,n_mu,n_fi,2,2)
+complex*16::m_atm_S(n_m,n_mu,n_mu,n_fi,2,2),m_atm_S_p(n_m,n_mu,n_mu,n_fi,2,2)
 real*8::E_cyc
 integer::n_m,n_mu,n_fi
 real*8::dmu,dfi,mu_i,mu_f,theta_i,theta_f,theta_ib,theta_fb,fi_i,fi_f,fi_ib,fi_fb,n_ib(3),n_fb(3),n_i(3),n_f(3),ksi_i,ksi_f
 real*8::help,delta_fi
 integer::i,j,k,j1,j2,k1,k2,jj,jj2,kk2
-complex*16::Amp_dSigmadOmega,Amp_dSigmadOmega_ell_magnitars !== functions ==!
+complex*16::Amp_dSigmadOmega_ell_magnitars,Amp_dSigmadOmega_ell_magnitars_p !== functions ==!
 real*8::NormWavesEll,NormWavesEll_cvp,NormWavesEll_cvp_,abs_mag_ff_Meszaros_new  !==function==!
 real*8::x_scale,kappa_T
 real*8 :: xk,frac
@@ -186,6 +186,15 @@ integer :: k0
                                                                    theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
           m_atm_S(i,j1,j2,k2,2,2) = Amp_dSigmadOmega_ell_magnitars(2,2,E,E_cyc,mas_m_rho(i,2),&
                                                                    theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+
+          m_atm_S_p(i,j1,j2,k2,1,1) = Amp_dSigmadOmega_ell_magnitars_p(1,1,E,E_cyc,mas_m_rho(i,2),&
+                                                         theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+          m_atm_S_p(i,j1,j2,k2,1,2) = Amp_dSigmadOmega_ell_magnitars_p(1,2,E,E_cyc,mas_m_rho(i,2),&
+                                                         theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+          m_atm_S_p(i,j1,j2,k2,2,1) = Amp_dSigmadOmega_ell_magnitars_p(2,1,E,E_cyc,mas_m_rho(i,2),&
+                                                         theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+          m_atm_S_p(i,j1,j2,k2,2,2) = Amp_dSigmadOmega_ell_magnitars_p(2,2,E,E_cyc,mas_m_rho(i,2),&
+                                                         theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
           k2 = k2+1
         end do
         j2 = j2+1
@@ -215,8 +224,10 @@ integer :: k0
         k2 = 1
         do while( k2.le.n_fi )
           m_atm_abs_b(i,j,2,1:2) = m_atm_abs_b(i,j,2,1:2) &
-                               + ( (abs(m_atm_S(i,j,j2,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,k2,1:2,2)))**2 )*dmu*dfi
-          R_b(i,j,j2,k2,1:2,1:2) = (abs(m_atm_S(i,j,j2,k2,1:2,1:2)))**2 * 3/32/pi          !== scattering redistribution function in B-field RF [1/ster] ==!
+                               + ( (abs(m_atm_S(i,j,j2,k2,1:2,1)))**2 + (abs(m_atm_S(i,j,j2,k2,1:2,2)))**2 &
+                                   + (abs(m_atm_S_p(i,j,j2,k2,1:2,1)))**2 + (abs(m_atm_S_p(i,j,j2,k2,1:2,2)))**2 )*dmu*dfi
+          R_b(i,j,j2,k2,1:2,1:2) = (abs(m_atm_S(i,j,j2,k2,1:2,1:2)))**2 * 3/32/pi &
+                                 + (abs(m_atm_S_p(i,j,j2,k2,1:2,1:2)))**2 * 3/32/pi !== scattering redistribution function in B-field RF [1/ster] ==!
           k2 = k2+1
         end do
         j2 = j2+1
