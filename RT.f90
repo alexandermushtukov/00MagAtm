@@ -1,8 +1,7 @@
 !============= ToDo ==========================!
-! - fix problem with 0-width of lower layer
+! - flux at the boundaries due to nearest layer emission 
 ! - make temperature correction
-! - proton resonance
-! - check ellipticity in compton amplitudes
+! - proton resonance in absorption
 !=============================================
 
 !=========================================================================================================
@@ -17,7 +16,7 @@ real*8::x_scale,kappa_T = 0.34d0
 real*8::F_tau(n_m,2),mas_x_rho_tau(n_m,5),help
 integer::i
   !== get hydrostatical stracure of the atmosphere ==!
-  call acc_atm_structure_5(mas_x_rho_tau,n_m,tau_min,tau_max,x_scale, &
+  call acc_atm_structure_5_(mas_x_rho_tau,n_m,tau_min,tau_max,x_scale, &
                            g14,mas_tau_TkeV,n_m,dot_m_6,ln_Lambda,0.d0,F_tau)
   mas_m_rho(1:n_m,1) = mas_x_rho_tau(1:n_m,3)/kappa_T         !== colomn density coordinate ==!
   mas_m_rho(1:n_m,2) = mas_x_rho_tau(1:n_m,2)                 !== local mass density ==!
@@ -325,7 +324,6 @@ real*8::kappa_T = 0.34d0
       mu = -1.d0 + dmu/2 + (j-1)*dmu
       k = 1
       do while( k.le.n_fi )
-        !tau = 0.d0
         I_e(i,j,k,1:2) = 0.d0
         i_pol = 1
         !== calculate two polarisations separately ==!
@@ -333,20 +331,16 @@ real*8::kappa_T = 0.34d0
           tau = 0.d0
           if( mu.ge.0.d0 )then
             !== upward propagation: accounting for underling layers ==!
-            !ii = i+1
-            ii = i+1
+            ii = i+1       !== accounting for layers below ==!
             do while( (ii.le.n_m).and.(tau.lt.tau_lim) )
-              if( ii.gt.1 )then
-                dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)                       !== colomn density of ii-layer ==!
-              else
-                dSigma = mas_m_rho(ii,1)
-              end if
+              dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)                       !== colomn density of ii-layer ==!
               kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
               dtau = dSigma * kappa / abs(mu)
               if( dtau.ne.0.d0 )then
-                if(ii.ne.i)then
+                if( ii.ne.(i+1) )then
                   I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
                 else
+                  !== we are at the layer boundary ==!
                   I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau
                 end if
               end if
@@ -356,10 +350,9 @@ real*8::kappa_T = 0.34d0
             end do
           else
             !== downward propagation: accounting for upper layers ==!
-            !ii = i-1
-            ii = i
-            do while( ii.ge.1 )
-              if((ii.ne.1).and.(tau.lt.tau_lim))then
+            ii = i      !== accounting for upper layers starting from the current one ==!
+            do while( (ii.ge.1).and.(tau.lt.tau_lim) )
+              if( ii.ne.1 )then
                 dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)
               else
                 dSigma = mas_m_rho(ii,1)
@@ -370,6 +363,7 @@ real*8::kappa_T = 0.34d0
                 if( ii.ne.i )then
                   I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
                 else
+                  !== we are at the boundary of a layer ==!
                   I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau
                 end if
               end if
@@ -418,4 +412,171 @@ return
 end subroutine RT_iterrations
 
 
+
+
+!============================================================================================
+! OUTPUT GRID (LOWER-BOUNDARY / NO-DUPLICATE VERSION):
+! We output values at the LOWER boundary of each layer, on a log-spaced tau-grid:
+!   tau_lower(i) = logspace(tau_min .. tau_max),  i=1..n
+! No tau=0 row is written and there is NO duplicated last boundary.
+! Therefore:
+!   mas_x_rho_tau_2(i,1) = x      at tau = tau_lower(i)
+!   mas_x_rho_tau_2(i,2) = rho2   at tau = tau_lower(i)
+!   mas_x_rho_tau_2(i,3) = tau_lower(i)
+!   mas_x_rho_tau_2(i,4) = eps24  at tau = tau_lower(i)
+!   mas_x_rho_tau_2(i,5) = T_keV_ at tau = tau_lower(i)
+! Requires tau_min > 0 (if n>1).
+!============================================================================================
+subroutine acc_atm_structure_5_(mas_x_rho_tau_2,n,tau_min,tau_max,x_scale, &
+                              g14,mas_tau_TkeV,n_mas,dot_m_6,ln_Lambda,rho0,F_tau)
+implicit none
+integer, intent(in)  :: n, n_mas
+real*8,  intent(in)  :: tau_min, tau_max, g14, dot_m_6, ln_Lambda, rho0
+real*8,  intent(in)  :: mas_tau_TkeV(n_mas,2)
+
+real*8,  intent(out) :: mas_x_rho_tau_2(n,5), x_scale
+real*8,  intent(out) :: F_tau(n,2)
+
+! local
+integer :: i, steps, max_steps
+real*8  :: dx, x, x_old
+real*8  :: tau2, tau_old, target_tau, f
+real*8  :: rho2, rho_old, drho2
+real*8  :: beta, beta_ff, dbeta_dx, Z
+real*8  :: T_keV, T_keV_, T_old
+real*8  :: eps24, eps_old
+real*8  :: rho_floor, beta_floor, T_floor
+real*8  :: tau_lower(n), log_ratio, expo
+
+real*8  :: find_H_ordered_inc
+external :: find_H_ordered_inc
+
+  rho_floor  = 1.d-30
+  beta_floor = 1.d-30
+  T_floor    = 1.d-30
+
+  beta_ff = 0.5d0
+  Z       = 1.d0
+
+  dx   = 1.d-3
+  x    = 0.d0
+  tau2 = 0.d0
+
+  rho2 = max(rho0, rho_floor)
+  beta = beta_ff
+
+  eps24  = 0.d0
+  T_keV_ = 0.d0
+
+  !---- build output tau grid directly: logspace(tau_min..tau_max), size n, no duplicates
+  if (n .eq. 1) then
+    tau_lower(1) = tau_max
+  else
+    log_ratio = log(tau_max / tau_min)
+    do i = 1, n
+      expo = dble(i-1) / dble(n-1)   ! 0..1
+      tau_lower(i) = tau_min * exp( expo * log_ratio )
+    end do
+    tau_lower(n) = tau_max
+  end if
+
+  !---- We WRITE rows at tau = tau_lower(i)
+  i = 1
+  target_tau = tau_lower(i)
+
+  steps = 0
+  max_steps = 200000000  ! safety cap
+
+  do while (i .le. n)
+    if (steps .ge. max_steps) exit
+    steps = steps + 1
+
+    ! save old state for interpolation
+    x_old   = x
+    tau_old = tau2
+    rho_old = rho2
+    eps_old = eps24
+    T_old   = T_keV_
+
+    ! temperature from tau-table at current tau (before step)
+    T_keV = find_H_ordered_inc(tau_old, mas_tau_TkeV, n_mas)
+    if (T_keV .le. T_floor) T_keV = T_floor
+
+    ! evolve beta
+    if (beta .gt. 0.d0) then
+      dbeta_dx = 3.24d-4 * rho2 * Z**2 / max(beta,beta_floor)**3 * ln_Lambda
+      beta = max(0.d0, beta - dx*dbeta_dx)
+    else
+      dbeta_dx = 0.d0
+      beta = 0.d0
+    end if
+
+    ! evolve rho2
+    if (beta .gt. 0.d0) then
+      drho2 = ( 0.5d0*0.1d0*g14/T_keV*rho2 + 31.15d0*dot_m_6*0.5d0/T_keV*dbeta_dx ) * dx
+    else
+      drho2 = ( 0.5d0*0.1d0*g14/T_keV*rho2 ) * dx
+    end if
+    rho2 = max(rho_floor, rho2 + drho2)
+
+    ! local source + proxy temperature
+    if (beta .gt. 0.d0) then
+      eps24  = 9.d2 * dot_m_6 * beta * dbeta_dx
+      T_keV_ = ( eps24 / 1.75d0 / max(rho2,rho_floor)**2 )**2
+    else
+      eps24  = 0.d0
+      T_keV_ = 0.d0
+    end if
+
+    ! evolve optical depth and x
+    tau2 = tau2 + 0.34d0 * rho2 * dx
+    x    = x + dx
+
+    ! write any crossed targets (may cross several in one dx step)
+    do while ( (tau2 .ge. target_tau) .and. (i .le. n) )
+      if (tau2 .gt. tau_old) then
+        f = (target_tau - tau_old) / (tau2 - tau_old)
+      else
+        f = 0.d0
+      end if
+
+      mas_x_rho_tau_2(i,1) = x_old + f*dx
+      mas_x_rho_tau_2(i,2) = rho_old + f*(rho2 - rho_old)
+      mas_x_rho_tau_2(i,3) = target_tau
+      mas_x_rho_tau_2(i,4) = eps_old + f*(eps24 - eps_old)
+      mas_x_rho_tau_2(i,5) = T_old   + f*(T_keV_ - T_old)
+
+      i = i + 1
+      if (i .le. n) then
+        target_tau = tau_lower(i)
+      end if
+    end do
+  end do
+
+  ! pad if stopped early
+  if (i .le. n) then
+    do while (i .le. n)
+      mas_x_rho_tau_2(i,1) = x
+      mas_x_rho_tau_2(i,2) = rho2
+      mas_x_rho_tau_2(i,3) = tau_lower(i)
+      mas_x_rho_tau_2(i,4) = eps24
+      mas_x_rho_tau_2(i,5) = T_keV_
+      i = i + 1
+    end do
+  end if
+
+  x_scale = mas_x_rho_tau_2(n,1) - mas_x_rho_tau_2(1,1)
+
+  ! cumulative source distribution vs tau (normalized)
+  F_tau(1,1) = mas_x_rho_tau_2(1,3)
+  F_tau(1,2) = 0.d0
+  do i = 2, n
+    F_tau(i,1) = mas_x_rho_tau_2(i,3)
+    F_tau(i,2) = F_tau(i-1,2) + mas_x_rho_tau_2(i,4) * (mas_x_rho_tau_2(i,1) - mas_x_rho_tau_2(i-1,1))
+  end do
+  if (F_tau(n,2) .gt. 0.d0) F_tau(1:n,2) = F_tau(1:n,2) / F_tau(n,2)
+
+return
+end subroutine acc_atm_structure_5_
+!============================================================================================
 
