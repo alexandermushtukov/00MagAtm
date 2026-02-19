@@ -7,10 +7,11 @@ real*8::pi=3.141592653589793d0
 real*8::E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda    !== physical parameters ==!
 real*8::m_min,m_max,kappa_T,tau_min,tau_max
 integer::n_m,n_mu,n_fi,i
-real*8::g14,flux_tot(2)
-real*8,allocatable::mas_tau_TkeV(:,:),mas_m_rho(:,:)
+real*8::g14
+real*8,allocatable::mas_tau_TkeV(:,:),mas_m_rho(:,:),flux_tot(:,:)
 integer::n_stream,i_task
-  
+
+  200 format (100(es11.4,"   ") )
   !!call test_absorption_mag_ff(); goto 144
 
   n_stream = 2
@@ -31,7 +32,7 @@ integer::n_stream,i_task
   !== numerical paramters ==!
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
   m_max = 1.d+4        !== the maximal column dencity [g/cm^2] ==!
-  n_m  = 200 !400
+  n_m  = 400 !400
   n_mu = 8  !18
   n_fi = 1!2 !18
   !=======================!
@@ -40,7 +41,7 @@ integer::n_stream,i_task
   tau_min = m_min*kappa_T
   tau_max = m_max*kappa_T
 
-  allocate( mas_tau_TkeV(n_m,2),mas_m_rho(n_m,2) )
+  allocate( mas_tau_TkeV(n_m,2),mas_m_rho(n_m,2),flux_tot(n_m,2) )
 
   !== set up some initial temperature sctructure ==!
   i = 1
@@ -55,7 +56,8 @@ integer::n_stream,i_task
   E = 0.34d0
   do while(E.le.10.d0)
     call pol_RT_fixE(flux_tot,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-    write(*,*)E,flux_tot(1:2)
+    !write(*,*)E,flux_tot(1,1:2)
+    write(*,200)E,flux_tot(1:14,1)
     E = E*1.2
   end do
 
@@ -69,7 +71,7 @@ integer::n_stream,i_task
     write(*,*)i_task
     E = 0.1d0 + 1.d0*(i_task-1)
     call pol_RT_fixE(flux_tot,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-    write(*,*)E,flux_tot(1:2)
+    write(*,*)E,flux_tot(1,1:2)
   !$omp end parallel
 144 return
 end program MagAtm
