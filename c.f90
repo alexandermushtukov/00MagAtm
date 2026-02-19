@@ -4,7 +4,7 @@ program MagAtm
 use omp_lib
 implicit none
 real*8::pi=3.141592653589793d0
-real*8::E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda    !== physical parameters ==!
+real*8::E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda,T_eff    !== physical parameters ==!
 real*8::m_min,m_max,kappa_T,tau_min,tau_max
 integer::n_m,n_mu,n_fi,i,n_E
 real*8::g14,E_min,E_max,dE
@@ -27,6 +27,7 @@ integer::n_stream,i_task
   A = 1.d0
   dot_m_6 = 0.d0
   ln_Lambda = 10.d0
+  T_eff = 0.5d0
   !==========================!
   g14 = 1.328d0*m_ns/R6**2
 
@@ -62,10 +63,16 @@ integer::n_stream,i_task
   do while(i.le.n_E)
     E = E_min * (E_max/E_min)**( real(i-1) / real(n_E-1) )
     dE  = E*( (E_max/E_min)**(1.0/(n_E-1)) - 1.0 )
-    call pol_RT_fixE(flux_E,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-    write(*,200)E,flux_E(1,1:2)
+    call pol_RT_fixE(flux_E,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+    !write(*,200)E,flux_E(1,1:2)
     flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + flux_E(1:n_m,1:2)*dE
     !write(*,200)E,flux_tot(1:14,1)
+    i = i+1
+  end do
+
+  i = 1
+  do while(i.le.n_m)
+    write(*,*)i,flux_tot(i,1:2)
     i = i+1
   end do
 
@@ -73,12 +80,12 @@ integer::n_stream,i_task
 
   call omp_set_num_threads(n_stream)
   !$omp parallel default(none)&
-  !$omp shared(B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)&
+  !$omp shared(B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)&
   !$omp private(i_task,E,flux_tot)
     i_task = omp_get_thread_num()+1
     write(*,*)i_task
     E = 0.1d0 + 1.d0*(i_task-1)
-    call pol_RT_fixE(flux_tot,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+    call pol_RT_fixE(flux_tot,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
     write(*,*)E,flux_tot(1,1:2)
   !$omp end parallel
 144 return

@@ -39,11 +39,11 @@ end subroutine get_hydro_atm_structure
 !=======================================================================================================
 ! ...
 !=======================================================================================================
-subroutine pol_RT_fixE(flux_tot,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+subroutine pol_RT_fixE(flux_tot,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 implicit none
 real*8,intent(out)::flux_tot(n_m,2)
 real*8::pi=3.141592653589793d0
-real*8,intent(in)::E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
+real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
 real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
 real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2)
@@ -60,7 +60,7 @@ integer::i,k,j
   i=1
   do while(i.le.1)
     flux_tot(1:n_m,1:2) = 0.d0
-    call RT_iterrations(I_e,S,S_0,R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
+    call RT_iterrations(I_e,S,E,S_0,T_eff,mas_tau_TkeV(n_m,2),R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
     k = 1
     do while(k.le.n_fi)
      j = 1
@@ -303,19 +303,24 @@ end subroutine set_atm_coefficients
 !==========================================================================================================================
 ! ...
 !==========================================================================================================================
-subroutine RT_iterrations(I_e,S,S_0,R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
+subroutine RT_iterrations(I_e,S,E,S_0,T_eff,T_bottom,R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
+use black_body
 implicit none
 real*8,intent(out)::S(n_m,n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8,intent(in)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
+real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,T_bottom,R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
 integer::i,j,k,i1,i2,ii,i_pol,jj,kk
 real*8::pi=3.141592653589793d0
 real*8::dmu,dfi,mu,dSigma,tau,dtau,tau_lim,kappa
 real*8::kappa_T = 0.34d0
+real*8::F_E_target
+
+  F_E_target = pi * BB_Intensity_22(E,T_eff)   !== used later to calculate emission from the bottom ==!
 
   tau_lim = 50.d0   !== the maximal optical distance b/w points ==!
   dmu = 2.d0/n_mu
   dfi = 2*pi/n_fi
+
   !== get intensity map ==!
   i = 1
   do while(i.le.n_m)
@@ -348,6 +353,11 @@ real*8::kappa_T = 0.34d0
               tau = tau + dtau
               ii = ii+1
             end do
+            !== add intensity from the lower boundary ==!
+            if( ii.ge.n_m )then
+              !== we still see the bottom of the atmosphere ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + BB_Intensity_22(E,T_bottom)/2 * exp(-tau) + 3*mu*(F_E_target/2)/4/pi  * exp(-tau)
+            end if
           else
             !== downward propagation: accounting for upper layers ==!
             ii = i      !== accounting for upper layers starting from the current one ==!
