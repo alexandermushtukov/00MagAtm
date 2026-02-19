@@ -20,7 +20,7 @@ integer::n_stream,i_task
   E = 2.d0
   m_ns = 1.4d0
   R6 = 1.d0
-  B12 = 2.d1
+  B12 = 2.d2
   theta_B = 0.d0
   Z = 1.d0
   A = 1.d0
@@ -57,7 +57,7 @@ integer::n_stream,i_task
   do while(E.le.10.d0)
     call pol_RT_fixE(flux_tot,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
     !write(*,*)E,flux_tot(1,1:2)
-    write(*,200)E,flux_tot(1:14,1)
+    write(*,200)E,flux_tot(1,1:2)  !flux_tot(1:14,1)
     E = E*1.2
   end do
 
