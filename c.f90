@@ -9,8 +9,9 @@ real*8::E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda,T_eff    !== physical parame
 real*8::m_min,m_max,kappa_T,tau_min,tau_max
 integer::n_m,n_mu,n_fi,i,n_E
 real*8::g14,E_min,E_max,dE,F_E_target,F_target,flux
-real*8,allocatable::mas_tau_TkeV(:,:),mas_m_rho(:,:),flux_tot(:,:),flux_E(:,:)
+real*8,allocatable::mas_tau_TkeV(:,:),mas_m_rho(:,:),flux_tot(:,:),flux_E(:,:),spec(:,:)
 integer::n_stream,i_task,i_iter
+character*100::file_sp,file_t
 
   200 format (100(es11.4,"   ") )
   !!call test_absorption_mag_ff(); goto 144
@@ -31,11 +32,17 @@ integer::n_stream,i_task,i_iter
   !==========================!
   g14 = 1.328d0*m_ns/R6**2
 
+  file_sp ="./res/res_sp"
+  open(unit = 25, file = file_sp); close(25)
+  file_t ="./res/res_t"
+  open(unit = 26, file = file_t); close(26)
+
+
   !== numerical paramters ==!
   m_min = 1.d-2        !== the maximal column dencity [g/cm^2] ==!
   m_max = 1.d+4        !== the maximal column dencity [g/cm^2] ==!
-  n_m  = 300 !400
-  n_mu = 8   !18
+  n_m  = 400 !400
+  n_mu = 12   !18
   n_fi = 1   !2 !18
   n_E = 30
   E_min = 0.1d0
@@ -46,7 +53,7 @@ integer::n_stream,i_task,i_iter
   tau_min = m_min*kappa_T
   tau_max = m_max*kappa_T
 
-  allocate( mas_tau_TkeV(n_m,2),mas_m_rho(n_m,2),flux_tot(n_m,2),flux_E(n_m,2) )
+  allocate( mas_tau_TkeV(n_m,2),mas_m_rho(n_m,2),flux_tot(n_m,2),flux_E(n_m,2),spec(n_E,3) )
 
   !== set up some initial temperature sctructure ==!
   i = 1
@@ -71,6 +78,9 @@ integer::n_stream,i_task,i_iter
       dE  = E*( (E_max/E_min)**(1.0/(n_E-1)) - 1.0 )
       call pol_RT_fixE(flux_E,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
       !write(*,200)E,flux_E(1,1:2)
+      spec(i,1) = E
+      spec(i,2) = flux_E(1,1)
+      spec(i,3) = flux_E(1,2)
       flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + flux_E(1:n_m,1:2)*dE
       F_target = F_target + F_E_target*dE
       !write(*,200)E,flux_tot(1:14,1)
@@ -84,13 +94,28 @@ integer::n_stream,i_task,i_iter
         flux = F_E_target/2
       end if
       mas_tau_TkeV(i,2) = mas_tau_TkeV(i,2) * ( F_E_target/ flux )**0.25
-      write(*,*)i,flux_tot(i,1:2),F_E_target,mas_tau_TkeV(i,2)
+      !write(*,*)i,flux_tot(i,1:2),F_E_target,mas_tau_TkeV(i,2)
       i = i+1
     end do
-    write(*,*)
-
+    !write(*,*)
     i_iter = i_iter+1
   end do
+
+  open(unit = 25, file = file_sp, status = 'old',form='formatted')
+  i = 1
+  do while(i.le.n_E)
+    write(25,*)spec(i,1:3)
+    i = i+1
+  end do
+  close(25)
+
+  open(unit = 26, file = file_t, status = 'old',form='formatted')
+  i = 1
+  do while(i.le.n_m)
+    write(26,*)mas_tau_TkeV(i,1:2)
+    i = i+1
+  end do
+  close(26)
 
   goto 144
 

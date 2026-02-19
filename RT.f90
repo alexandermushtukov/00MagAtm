@@ -1,6 +1,6 @@
 !============= ToDo ==========================!
 ! - flux at the boundaries due to nearest layer emission 
-! - make temperature correction
+! - update temperature correction
 ! - proton resonance in absorption
 !=============================================
 
@@ -588,5 +588,4 @@ external :: find_H_ordered_inc
 
 return
 end subroutine acc_atm_structure_5_
-!============================================================================================
-
+!=========================================================================================
