@@ -47,7 +47,7 @@ integer::n_stream,i_task
   i = 1
   do while( i.le. n_m )
     mas_tau_TkeV(i,1) = m_min * (m_max/m_min)**( dble(i-1) / dble(n_m-1) )
-    mas_tau_TkeV(i,2) = 0.5d0
+    mas_tau_TkeV(i,2) = 0.5d0 ! + 2.d0 * i/n_m
     i = i+1
   end do
 
