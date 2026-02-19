@@ -1,6 +1,5 @@
-
 !========================================================================================================
-! Function calculates complex scattering amplitudes.
+! Function calculates complex scattering amplitudes for electrons.
 !   ksi_i, ksi_f - ellipticities of photons before and after scattering event.
 !   Note: we assume coherent scattering.
 !   See appendix B in 2204.12271
@@ -44,6 +43,80 @@ integer::det
 return
 end function Amp_dSigmadOmega_ell_magnitars
 
+
+!========================================================================================================
+! Function calculates complex scattering amplitudes for electrons.
+!   ksi_i, ksi_f - ellipticities of photons before and after scattering event.
+!   Note: we assume coherent scattering.
+!   See appendix B in 2204.12271
+!========================================================================================================
+complex*16 function Amp_dSigmadOmega_ell_magnitars_p(s1,s2,E,Ecyc,rho,theta1,theta2,fi1,fi2,Z,A,ksi_i,ksi_f)
+implicit none
+integer,intent(in)::s1,s2
+real*8,intent(in)::E,Ecyc,rho,theta1,theta2,fi1,fi2,Z,A,ksi_i,ksi_f
+complex*16::Amp_dSigmadOmega_ell_magnitars  !== function ==!
+real*8::pi=3.141592653589793d0
+   Amp_dSigmadOmega_ell_magnitars_p = Amp_dSigmadOmega_ell_magnitars(s1,s2,E,Ecyc/1838,rho,pi-theta1,pi-theta2,fi1,fi2,Z,A,ksi_i,ksi_f)
+   Amp_dSigmadOmega_ell_magnitars_p = Amp_dSigmadOmega_ell_magnitars_p/1838
+return
+end function Amp_dSigmadOmega_ell_magnitars_p
+
+
+!=====================================================================================================
+!=====================================================================================================
+subroutine test_cross_sections()
+implicit none
+real*8::pi=3.141592653589793d0
+real*8::B12,theta_i,theta_f,fi_i,fi_f,E_cyc,E,ksi_i,ksi_f
+complex*16::Amp_dSigmadOmega_ell_magnitars_p,Amp_dSigmadOmega_ell_magnitars  !== functions ==!
+real*8:: NormWavesEll_cvp_ !== function ==!
+complex*16::amp
+real*8::sc_e,sc_p,singma,dtheta,dfi,sigma_e,sigma_p ,rho,Z,A
+integer::n_theta,n_fi,i,j
+  n_theta = 50; n_fi = 30
+  dtheta = pi/n_theta
+  dfi = 2*pi/n_fi
+
+  Z = 1.d0; A = 1.d0
+  rho = 1.d0
+  B12 = 1.d2
+  E_cyc = 11.6d0*B12
+  theta_i = 0.d0
+  fi_i = 1.d0
+
+  E = 0.1d0
+  do while(E.le.1000.d0)
+    ksi_i = NormWavesEll_cvp_(1,E,E_cyc,theta_i,rho,Z,A)  !== (+)-mode ==!
+    sigma_e = 0.d0
+    sigma_p = 0.d0
+    i=1
+    do while( i.le.n_theta )
+      theta_f = dtheta/2 + (i-1)*dtheta
+      j = 1
+      do while(j.le.n_fi)
+        fi_f = dfi/2 + (j-1)*dfi
+
+        ksi_f = NormWavesEll_cvp_(2,E,E_cyc,theta_i,rho,Z,A)
+        amp = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,rho,theta_i,theta_f,fi_i,fi_f,Z,A,ksi_i,ksi_f)
+        sigma_e = sigma_e + (abs(amp))**2 * 3/32/pi *dfi*dtheta*sin(theta_f)
+        amp = Amp_dSigmadOmega_ell_magnitars_p(1,1,E,E_cyc,rho,theta_i,theta_f,fi_i,fi_f,Z,A,ksi_i,ksi_f)
+        sigma_p = sigma_p + (abs(amp))**2 * 3/32/pi *dfi*dtheta*sin(theta_f)
+
+        ksi_f = NormWavesEll_cvp_(1,E,E_cyc,theta_i,rho,Z,A)
+        amp = Amp_dSigmadOmega_ell_magnitars(1,1,E,E_cyc,rho,theta_i,theta_f,fi_i,fi_f,Z,A,ksi_i,ksi_f)
+        sigma_e = sigma_e + (abs(amp))**2 * 3/32/pi *dfi*dtheta*sin(theta_f)
+        amp = Amp_dSigmadOmega_ell_magnitars_p(1,1,E,E_cyc,rho,theta_i,theta_f,fi_i,fi_f,Z,A,ksi_i,ksi_f)
+        sigma_p = sigma_p + (abs(amp))**2 * 3/32/pi *dfi*dtheta*sin(theta_f)
+
+        j = j+1
+      end do
+      i = i+1
+    end do
+    write(*,*)E,sigma_e,sigma_p
+    E = E*1.1d0
+  end do
+return
+end subroutine test_cross_sections
 
 
 !====================================================================================================================
