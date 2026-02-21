@@ -1,5 +1,4 @@
 !============= ToDo ==========================!
-! - flux at the boundaries due to nearest layer emission 
 ! - update temperature correction
 ! - proton resonance in absorption
 !=============================================
@@ -45,14 +44,14 @@ real*8,intent(out)::flux_tot(n_m,2)
 real*8::pi=3.141592653589793d0
 real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
-real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2)
-real*8::dmu,dfi,mu,theta
+real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
+real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2),m_coord_b(n_mu,n_fi,2)
+real*8::dmu,dfi,mu,theta,R_b(n_m,n_mu,n_mu,n_fi,2,2)
 integer::i,k,j
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
-  call set_atm_coefficients(S_therm,R,m_atm_kappa,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+  call set_atm_coefficients(S_therm,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   !== start iterrations ==!
@@ -60,7 +59,7 @@ integer::i,k,j
   i=1
   do while(i.le.1)
     flux_tot(1:n_m,1:2) = 0.d0
-    call RT_iterrations(I_e,S,E,S_0,T_eff,mas_tau_TkeV(n_m,2),R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
+    call RT_iterrations(I_e,S,E,S_0,T_eff,mas_tau_TkeV(n_m,2),R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
     k = 1
     do while(k.le.n_fi)
      j = 1
@@ -101,14 +100,14 @@ end subroutine pol_RT_fixE
 !    m_atm_kappa - map of opaity [cm^2/g]
 !  mas_tau_TkeV(tau,T) - ...
 !==============================================================================================================================
-subroutine set_atm_coefficients(S_0,R,m_atm_kappa,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+subroutine set_atm_coefficients(S_0,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 use black_body
 implicit none
-real*8,intent(out)::S_0(n_m,n_mu,n_fi,2),R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
+real*8,intent(out)::S_0(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2),m_coord_b(n_mu,n_fi,2)
 real*8,intent(in)::E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 real*8::pi=3.141592653589793d0
 real*8::m_atm_abs_b(n_m,n_mu,2,2)
-real*8::m_coord_b(n_mu,n_fi,2),KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
+real*8::KK_b(n_m,n_mu,2),KK(n_m,n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
 complex*16::m_atm_S(n_m,n_mu,n_mu,n_fi,2,2),m_atm_S_p(n_m,n_mu,n_mu,n_fi,2,2)
 real*8::E_cyc
 integer::n_m,n_mu,n_fi
@@ -187,13 +186,13 @@ integer :: k0
                                                                    theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
 
           m_atm_S_p(i,j1,j2,k2,1,1) = Amp_dSigmadOmega_ell_magnitars_p(1,1,E,E_cyc,mas_m_rho(i,2),&
-                                                         theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+                                                                   theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
           m_atm_S_p(i,j1,j2,k2,1,2) = Amp_dSigmadOmega_ell_magnitars_p(1,2,E,E_cyc,mas_m_rho(i,2),&
-                                                         theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+                                                                   theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
           m_atm_S_p(i,j1,j2,k2,2,1) = Amp_dSigmadOmega_ell_magnitars_p(2,1,E,E_cyc,mas_m_rho(i,2),&
-                                                         theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+                                                                   theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
           m_atm_S_p(i,j1,j2,k2,2,2) = Amp_dSigmadOmega_ell_magnitars_p(2,2,E,E_cyc,mas_m_rho(i,2),&
-                                                         theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
+                                                                   theta_ib,theta_fb,fi_ib,fi_fb,Z,A,ksi_i,ksi_f)
           k2 = k2+1
         end do
         j2 = j2+1
@@ -247,9 +246,8 @@ integer :: k0
       k = 1
       do while( k.le.n_fi )
         theta_ib = m_coord_b(j,k,1)
-        !jj = max(1, min(n_mu, int((cos(theta_ib)+1.d0)/dmu) + 1))
 
-        jj = nint( (cos(theta_ib) + 1.d0 - dmu/2.d0) / dmu ) + 1
+        jj = nint( (cos(theta_ib) + 1.d0 - dmu/2) / dmu ) + 1
         jj = max(1, min(n_mu, jj))
 
         fi_ib = m_coord_b(j,k,2)
@@ -258,41 +256,37 @@ integer :: k0
         m_atm_kappa(i,j,k,2,1:2) = m_atm_abs_b(i,jj,2,1:2) * kappa_T   !== absorption due to Compton  ==!
 
         S_0(i,j,k,1:2) = BB_Intensity_22(E,mas_tau_TkeV(i,2))/2 * m_atm_kappa(i,j,k,1,1:2)   !== initial thermal source function [kappa*B_22] ==!
-        j2 = 1
-        do while(j2.le.n_mu)
-          k2 = 1
-          do while( k2.le.n_fi )
-            theta_fb = m_coord_b(j2,k2,1)
-            !jj2 = max(1, min(n_mu, int((cos(theta_fb)+1.d0)/dmu) + 1))
+        !j2 = 1
+        !do while(j2.le.n_mu)
+        !  k2 = 1
+        !  do while( k2.le.n_fi )
+        !    theta_fb = m_coord_b(j2,k2,1)
+        !    jj2 = nint( (cos(theta_fb) + 1.d0 - dmu/2) / dmu ) + 1
+        !    jj2 = max(1, min(n_mu, jj2))!
 
-            jj2 = nint( (cos(theta_fb) + 1.d0 - dmu/2.d0) / dmu ) + 1
-            jj2 = max(1, min(n_mu, jj2))
+        !    fi_fb = m_coord_b(j2,k2,2)
 
-            fi_fb = m_coord_b(j2,k2,2)
+        !    delta_fi = fi_fb - fi_ib
+        !    ! wrap to [0,2pi)
+        !    delta_fi = delta_fi - 2*pi*floor(delta_fi/(2*pi))
+        !    ! (эквивалент if, но работает и для >2pi)
+        !    xk   = delta_fi/dfi           ! in [0, n_fi)
+        !    k0   = int(xk) + 1            ! 1..n_fi
+        !    frac = xk - dble(k0-1)        ! 0..1
+        !    k1 = k0 + 1
+        !    if (k1.gt.n_fi) k1 = 1        ! periodicity
+        !    R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2) + frac*R_b(i,jj,jj2,k1,1:2,1:2)!
 
-            delta_fi = fi_fb - fi_ib
-            ! wrap to [0,2pi)
-            delta_fi = delta_fi - 2*pi*floor(delta_fi/(2*pi))
-            ! (эквивалент if, но работает и для >2pi)
-            xk   = delta_fi/dfi           ! in [0, n_fi)
-            k0   = int(xk) + 1            ! 1..n_fi
-            frac = xk - dble(k0-1)        ! 0..1
-            k1 = k0 + 1
-            if (k1.gt.n_fi) k1 = 1        ! periodicity
-            R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2) + frac*R_b(i,jj,jj2,k1,1:2,1:2)
-
-            k2 = k2 + 1
-          end do
-          j2 = j2+1
-        end do
+        !    k2 = k2 + 1
+        !  end do
+        !  j2 = j2+1
+        !end do
         !write(*,*)i,j,k,m_atm_kappa(i,j,k,1:2,1:2)
         !read(*,*)
         k = k+1
       end do
       j = j+1
     end do
-    !m_atm_kappa(i,1:n_mu,1:n_fi,1:2,1:2) = m_atm_kappa(i,1:n_mu,1:n_fi,1:2,1:2)  !== it is opcity [cm^2/g] ==!
-    !write(*,*)"## ",i,mas_m_rho(i,1:2),KK_b(i,4,1:2)
     i = i+1
   end do
 122 return
@@ -303,17 +297,20 @@ end subroutine set_atm_coefficients
 !==========================================================================================================================
 ! ...
 !==========================================================================================================================
-subroutine RT_iterrations(I_e,S,E,S_0,T_eff,T_bottom,R,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi)
+subroutine RT_iterrations(I_e,S,E,S_0,T_eff,T_bottom,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
 use black_body
 implicit none
 real*8,intent(out)::S(n_m,n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,T_bottom,R(n_m,n_mu,n_mu,n_fi,n_fi,2,2),m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
+real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,T_bottom,m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
+real*8,intent(in)::m_coord_b(n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
 integer::i,j,k,i1,i2,ii,i_pol,jj,kk
 real*8::pi=3.141592653589793d0
 real*8::dmu,dfi,mu,dSigma,tau,dtau,tau_lim,kappa
 real*8::kappa_T = 0.34d0
 real*8::F_E_target
+real*8::RR(2,2),frac
+integer::q1,q2,qq1,qq2
 
   F_E_target = pi * BB_Intensity_22(E,T_eff)   !== used later to calculate emission from the bottom ==!
 
@@ -405,8 +402,15 @@ real*8::F_E_target
         do while(jj.le.n_mu)
           kk = 1
           do while(kk.le.n_fi)
-            S(i,j,k,1) = S(i,j,k,1) + ( R(i,jj,j,kk,k,1,1)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,1)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
-            S(i,j,k,2) = S(i,j,k,2) + ( R(i,jj,j,kk,k,1,2)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,2)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+            !!S(i,j,k,1) = S(i,j,k,1) + ( R(i,jj,j,kk,k,1,1)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,1)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+            !!S(i,j,k,2) = S(i,j,k,2) + ( R(i,jj,j,kk,k,1,2)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,2)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+
+            call get_index_for_R(q1,q2,qq1,qq2,frac,jj,j,kk,k,m_coord_b,n_mu,n_fi,dmu,dfi)
+            RR(1:2,1:2) = (1.d0-frac)*R_b(i,q1,q2,qq1,1:2,1:2) + frac*R_b(i,q1,q2,qq2,1:2,1:2)
+            !R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2) + frac*R_b(i,jj,jj2,k1,1:2,1:2)
+            S(i,j,k,1) = S(i,j,k,1) + ( RR(1,1)*I_e(i,jj,kk,1) + RR(2,1)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+            S(i,j,k,2) = S(i,j,k,2) + ( RR(1,2)*I_e(i,jj,kk,1) + RR(2,2)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+
             kk = kk+1
           end do
           jj = jj+1
@@ -421,6 +425,42 @@ real*8::F_E_target
 return
 end subroutine RT_iterrations
 
+
+!================================================================================================
+! ...
+!   R(i,j,j2,k,k2,1:2,1:2) requested
+!   R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2) + frac*R_b(i,jj,jj2,k1,1:2,1:2)
+!================================================================================================
+subroutine get_index_for_R(jj,jj2,k0,k1,frac,j,j2,k,k2,m_coord_b,n_mu,n_fi,dmu,dfi)
+implicit none
+integer,intent(out)::jj,jj2,k0,k1
+real*8,intent(out)::frac
+real*8,intent(in)::m_coord_b(n_mu,n_fi,2),dmu,dfi
+integer,intent(in)::j,j2,k,k2,n_mu,n_fi
+real*8::theta_ib,theta_fb,fi_ib,fi_fb,delta_fi,xk
+real*8::pi=3.141592653589793d0
+
+  theta_ib = m_coord_b(j,k,1)
+  jj = nint( (cos(theta_ib) + 1.d0 - dmu/2) / dmu ) + 1;   jj = max(1, min(n_mu, jj))
+  fi_ib = m_coord_b(j,k,2)
+
+  theta_fb = m_coord_b(j2,k2,1)
+  jj2 = nint( (cos(theta_fb) + 1.d0 - dmu/2) / dmu ) + 1;  jj2 = max(1, min(n_mu, jj2))
+
+  fi_fb = m_coord_b(j2,k2,2)
+  delta_fi = fi_fb - fi_ib
+  ! wrap to [0,2pi)
+  delta_fi = delta_fi - 2*pi*floor(delta_fi/(2*pi))
+
+  ! (эквивалент if, но работает и для >2pi)
+  xk   = delta_fi/dfi           ! in [0, n_fi)
+  k0   = int(xk) + 1            ! 1..n_fi
+  frac = xk - dble(k0-1)        ! 0..1
+  k1 = k0 + 1
+  if (k1.gt.n_fi) k1 = 1        ! periodicity
+
+return
+end subroutine get_index_for_R
 
 
 
