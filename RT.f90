@@ -38,9 +38,9 @@ end subroutine get_hydro_atm_structure
 !=======================================================================================================
 ! ...
 !=======================================================================================================
-subroutine pol_RT_fixE(flux_tot,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+subroutine pol_RT_fixE(flux_tot,J_E,kabs_mean,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 implicit none
-real*8,intent(out)::flux_tot(n_m,2)
+real*8,intent(out)::flux_tot(n_m,2),J_E(n_m,2),kabs_mean(n_m,2)
 real*8::pi=3.141592653589793d0
 real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
@@ -59,9 +59,13 @@ integer::i,k,j
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   !== start iterrations ==!
   S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)
+
+  !== iterrations of radiative transfer ==!
+  flux_tot(1:n_m,1:2) = 0.d0
+  J_E(1:n_m,1:2) = 0.d0
+  kabs_mean(1:n_m,1:2) = 0.d0
   i=1
-  do while(i.le.1)
-    flux_tot(1:n_m,1:2) = 0.d0
+  do while(i.le.6)
     call RT_iterrations(I_e,S,E,S_0,T_eff,mas_tau_TkeV(n_m,2),R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
     k = 1
     do while(k.le.n_fi)
@@ -69,6 +73,8 @@ integer::i,k,j
       do while(j.le.n_mu)
         mu = -1.d0 + dmu/2 + (j-1)*dmu; theta = acos(mu)
         flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + I_e(1:n_m,j,k,1:2)*mu * dmu*dfi  !sin(theta)
+        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + I_e(1:n_m,j,k,1:2) * dmu*dfi
+        kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) + m_atm_kappa(1:n_m,j,k,1,1:2) * dmu*dfi
         j = j+1
       end do
       !write(*,*)
@@ -78,6 +84,9 @@ integer::i,k,j
     I_out_tot(1:n_mu,1:n_fi,1:2) = I_out(1:n_mu,1:n_fi,1:2)
     i = i+1
   end do
+  J_E(1:n_m,1:2) = J_E(1:n_m,1:2) / (4*pi)
+  kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) / (4*pi)
+
 
   !== printing ==!
   k = 1
