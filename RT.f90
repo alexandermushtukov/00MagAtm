@@ -51,7 +51,10 @@ integer::i,k,j
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
-  call set_atm_coefficients(S_therm,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+  call set_atm_coefficients(S_therm,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_B,Z,A,&
+                            dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+
+  !write(*,*)S_therm(1:n_m,1:n_mu,1:n_fi,1:2)
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   !== start iterrations ==!
@@ -100,7 +103,8 @@ end subroutine pol_RT_fixE
 !    m_atm_kappa - map of opaity [cm^2/g]
 !  mas_tau_TkeV(tau,T) - ...
 !==============================================================================================================================
-subroutine set_atm_coefficients(S_0,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_b,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+subroutine set_atm_coefficients(S_0,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_b,Z,A,&
+                                dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
 use black_body
 implicit none
 real*8,intent(out)::S_0(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2),m_coord_b(n_mu,n_fi,2)
@@ -151,6 +155,12 @@ integer :: k0
       theta_i = acos(mu_i)
       KK_b(i,j,1) = NormWavesEll_cvp_(2,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== (+)-mode ==!
       KK_b(i,j,2) = NormWavesEll_cvp_(1,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== (-)-mode ==!
+
+!if( isnan(KK_b(i,j,2)) )then
+!  write(*,*)"@",KK_b(i,j,2),E,E_cyc,theta_i,mas_m_rho(i,2),Z,A
+!  read(*,*)
+!end if
+
       j = j+1
     end do
     i = i+1
@@ -327,6 +337,9 @@ integer::q1,q2,qq1,qq2
       k = 1
       do while( k.le.n_fi )
         I_e(i,j,k,1:2) = 0.d0
+!if((i.eq.3).and.(j.eq.6).and.(k.eq.1))then
+!  write(*,*)I_e(3,6,1,2)
+!end if
         i_pol = 1
         !== calculate two polarisations separately ==!
         do while(i_pol.le.2)
@@ -353,7 +366,8 @@ integer::q1,q2,qq1,qq2
             !== add intensity from the lower boundary ==!
             if( ii.ge.n_m )then
               !== we still see the bottom of the atmosphere ==!
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + BB_Intensity_22(E,T_bottom)/2 * exp(-tau) + 3*mu*(F_E_target/2)/4/pi  * exp(-tau)
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + BB_Intensity_22(E,T_bottom)/2 * exp(-tau) &
+                                                   + 3*mu*(F_E_target/2)/4/pi  * exp(-tau)
             end if
           else
             !== downward propagation: accounting for upper layers ==!
@@ -388,6 +402,8 @@ integer::q1,q2,qq1,qq2
     i = i+1
   end do
   !== getting new source function ==!
+
+!write(*,*)I_e(3,6,1,2)
 
   !== get new souse function, in units kappa*B_22 ==!
   S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0

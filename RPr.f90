@@ -56,7 +56,8 @@ integer,intent(in)::s1,s2
 real*8,intent(in)::E,Ecyc,rho,theta1,theta2,fi1,fi2,Z,A,ksi_i,ksi_f
 complex*16::Amp_dSigmadOmega_ell_magnitars  !== function ==!
 real*8::pi=3.141592653589793d0
-   Amp_dSigmadOmega_ell_magnitars_p = Amp_dSigmadOmega_ell_magnitars(s1,s2,E,Ecyc/1838,rho,pi-theta1,pi-theta2,fi1,fi2,Z,A,ksi_i,ksi_f)
+   Amp_dSigmadOmega_ell_magnitars_p = Amp_dSigmadOmega_ell_magnitars(s1,s2,E,Ecyc/1838,rho,&
+                                                       pi-theta1,pi-theta2,fi1,fi2,Z,A,ksi_i,ksi_f)
    Amp_dSigmadOmega_ell_magnitars_p = Amp_dSigmadOmega_ell_magnitars_p/1838
 return
 end function Amp_dSigmadOmega_ell_magnitars_p
@@ -162,7 +163,7 @@ real*8 function abs_mag_ff_Meszaros_new(K_j,E,E_cyc,T_keV,theta,Z,A,rho)
 use abs_mag_ff_Meszaros
 implicit none
 real*8,intent(in)::K_j,E,E_cyc,T_keV,theta,Z,A,rho
-real*8::koef_e_0,koef_e_min,koef_e_plus,g_perp,g_par,g_R,res,K_jz,K_1,K_2,Kz_1,Kz_2
+real*8::koef_e_0,koef_e_min,koef_e_plus,g_perp,g_par,g_R,res_e,res_p,K_jz,K_1,K_2,Kz_1,Kz_2
 real*8::NormWavesEll  !==function==!
 real*8::sigma_0
 
@@ -177,8 +178,13 @@ real*8::sigma_0
   koef_e_plus = ( 1.d0 + K_j*cos(theta) )**2 / 2/ ( 1.d0 + K_j**2 )  !==2003MNRAS338_233H_(3.1)==!
   koef_e_min  = ( 1.d0 - K_j*cos(theta) )**2 / 2/ ( 1.d0 + K_j**2 )  !==2003MNRAS338_233H_(3.1)==!
   call g( E/511, T_keV/511, E_cyc/511, theta, g_perp, g_par, g_R)
-  res = E**2/(E+E_cyc)**2*koef_e_plus*g_perp + koef_e_min*g_R + koef_e_0*g_par
-  abs_mag_ff_Meszaros_new = res*sigma_0
+  !== electron contribution to absorption ==!
+  res_e = E**2/(E+E_cyc)**2 * koef_e_plus*g_perp &
+        + koef_e_min * g_R &
+        + koef_e_0 * g_par
+  !== proton contribution to absorption ==!
+  ! ...
+  abs_mag_ff_Meszaros_new = res_e * sigma_0
 return
 end function abs_mag_ff_Meszaros_new
 !============================================================
