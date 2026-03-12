@@ -8,13 +8,17 @@ real*8::pi=3.141592653589793d0
 real*8::E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda,T_eff    !== physical parameters ==!
 real*8::m_min,m_max,kappa_T,tau_min,tau_max
 integer::n_m,n_mu,n_fi,i,n_E
-real*8::g14,E_min,E_max,dE,F_E_target,F_target,flux,alpha,T_old,T_corr
+real*8::g14,E_min,E_max,dE,F_E_target,F_target,flux,alpha,T_old,T_corr,T_floor
 real*8,allocatable::mas_tau_TkeV(:,:),mas_m_rho(:,:),flux_tot(:,:),flux_E(:,:),J_E(:,:),kabs_mean(:,:),spec(:,:),num(:,:),den(:,:),&
                     B(:),dBdT(:)
 integer::n_stream,i_task,i_iter,jj
 character*100::file_sp,file_t
 real*8::eps,dT
+real*8::sigma_SB_22_keV
+
+  sigma_SB_22_keV = 1.027d2   !== F_22 = sigma_SB_22_keV * T_keV^4 ==!
   eps = 1.d-2
+  T_floor = 0.1d0
 
   200 format (100(es11.4,"   ") )
   !!call test_absorption_mag_ff(); goto 144
@@ -47,7 +51,7 @@ real*8::eps,dT
   n_m  = 50  !400
   n_mu = 10   !18
   n_fi = 1   !2 !18
-  n_E = 8
+  n_E = 20
   E_min = 0.1d0
   E_max = 7.d0
   !=======================!
@@ -70,16 +74,16 @@ real*8::eps,dT
 
   !== teperature iterrrations ==!
   i_iter = 0
-  do while(i_iter.le.1)
+  do while(i_iter.le.6)
     !== get hydro structure of the atmosphere ==!
     write(*,*)"# start iter:",i_iter
     call get_hydro_atm_structure(mas_m_rho,g14,dot_m_6,ln_Lambda,tau_min,tau_max,n_m,mas_tau_TkeV)
-write(*,*)"#a1"
+    !write(*,*)"#a1"
     F_target = 0.d0
     flux_tot(1:n_m,1:2) = 0.d0
     num(1:n_m,1:2) = 0.d0
     den(1:n_m,1:2) = 0.d0
-write(*,*)"#a2"
+    !write(*,*)"#a2"
     !== integration over the energy band ==!
     i = 1
     do while(i.le.n_E)
@@ -127,8 +131,12 @@ write(*,*)"#a2"
       if ( (den(i,1)+den(i,2)).gt.0. ) then
         dT = - (num(i,1)+num(i,2)) / (den(i,1)+den(i,2))
         mas_tau_TkeV(i,2) = T_old + alpha * dT
+        mas_tau_TkeV(i,2) = max( T_floor, mas_tau_TkeV(i,2) )  !== twemperature cannot drop below some level ==!
+        !if( mas_tau_TkeV(i,2).le.0.d0  )then
+        !  write(*,*)"T<0",mas_tau_TkeV(i,2),dT; read(*,*)
+        !end if
       end if
-      !write(*,*)i,flux_tot(i,1:2),F_E_target,mas_tau_TkeV(i,2)
+      write(*,*)i,flux_tot(i,1:2),F_target,sigma_SB_22_keV*T_eff**4," $$$ ",mas_tau_TkeV(i,2)
       i = i+1
     end do
     i_iter = i_iter+1
