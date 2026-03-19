@@ -243,15 +243,12 @@ subroutine build_temperature_correction(dT, dT_sm, max_rel_flux_err, max_rel_dT,
                                         mas_tau_TkeV, flux, gradF, F_target, n,   &
                                         lambda_T, T_floor, m_turn, p_weight, weights)
 implicit none
-
 integer, intent(in) :: n
 real(8), intent(in) :: mas_tau_TkeV(n,2), flux(n), gradF(n), F_target
 real(8), intent(in) :: lambda_T, T_floor, m_turn, p_weight
 real(8), intent(in) :: weights(0:2)
-
 real(8), intent(out) :: dT(n), dT_sm(n)
 real(8), intent(out) :: max_rel_flux_err, max_rel_dT
-
 integer :: i
 real(8) :: rel_flux_err, gradF_scale, wloc
 real(8) :: weight_m(n)
@@ -273,24 +270,19 @@ real(8) :: weight_m(n)
   dT(1) = 0.d0
   i = 2
   do while (i .le. n)
-
     rel_flux_err = abs(flux(i) - F_target) / max(F_target,1.d-30)
     if (rel_flux_err .gt. max_rel_flux_err) max_rel_flux_err = rel_flux_err
-
     ! Local energy-balance correction:
     ! positive dF/dm -> heating
     ! negative dF/dm -> cooling
     wloc = 1.d0   ! or weight_m(i) if depth suppression is needed
     dT(i) = wloc * lambda_T * gradF(i) / gradF_scale * mas_tau_TkeV(i,2) * 2.d0
-
     ! Additional suppression in the deepest layers
     if (i .ge. n-5) dT(i) = 0.3d0*dT(i)
-
     ! Limit relative step to avoid oscillatory behaviour
     if (abs(dT(i)) .gt. 0.05d0*mas_tau_TkeV(i,2)) then
       dT(i) = sign(0.05d0*mas_tau_TkeV(i,2), dT(i))
     end if
-
     i = i + 1
   end do
 
@@ -312,7 +304,6 @@ real(8) :: weight_m(n)
     end if
     i = i + 1
   end do
-
 return
 end subroutine build_temperature_correction
 
