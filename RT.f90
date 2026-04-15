@@ -38,35 +38,41 @@ end subroutine get_hydro_atm_structure
 !=======================================================================================================
 ! ...
 !=======================================================================================================
-subroutine pol_RT_fixE(flux_tot,J_E,kabs_mean,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+subroutine pol_RT_fixE(flux_tot,J_E,kabs_mean,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,&
+                       T_bot,n_m,n_mu,n_fi)
 implicit none
 real*8,intent(out)::flux_tot(n_m,2),J_E(n_m,2),kabs_mean(n_m,2)
 real*8::pi=3.141592653589793d0
-real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
+real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2),T_bot
 integer,intent(in)::n_m,n_mu,n_fi
 real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
 real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2),m_coord_b(n_mu,n_fi,2)
 real*8::dmu,dfi,mu,theta,R_b(n_m,n_mu,n_mu,n_fi,2,2)
-integer::i,k,j
+integer::i,k,j,i_max
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
 
+  !====================================================================================!
+  ! get S_therm - source function due to thermal emission [kappa*B_22]
+  !     R_b - redistrubution function [1/ster]
+  !     m_atm_kappa - map of opaity [cm^2/g]
   call set_atm_coefficients(S_therm,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_B,Z,A,&
                             dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-
-  !write(*,*)S_therm(1:n_m,1:n_mu,1:n_fi,1:2)
+  !=====================================================================================!
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   !== start iterrations ==!
   S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)
 
-  !== iterrations of radiative transfer ==!
+  !== iterrations of radiative transfer: start ==!
   flux_tot(1:n_m,1:2) = 0.d0
   J_E(1:n_m,1:2) = 0.d0
   kabs_mean(1:n_m,1:2) = 0.d0
+  i_max = 5
   i=1
-  do while(i.le.6)
-    call RT_iterrations(I_e,S,E,S_0,T_eff,mas_tau_TkeV(n_m,2),R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
+  do while(i.le.i_max)
+    !call RT_iterrations(I_e,S,E,S_0,T_eff,mas_tau_TkeV(n_m,2),R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
+    call RT_iterrations_2(I_e,S,E,S_0,T_eff,T_bot,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
     k = 1
     do while(k.le.n_fi)
      j = 1
@@ -86,7 +92,7 @@ integer::i,k,j
   end do
   J_E(1:n_m,1:2) = J_E(1:n_m,1:2) / (4*pi)
   kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) / (4*pi)
-
+  !== iterrations of radiative transfer: end ==!
 
   !== printing ==!
   k = 1
@@ -99,7 +105,6 @@ integer::i,k,j
     !write(*,*)
     k = k+1
   end do
-  
 return
 end subroutine pol_RT_fixE
 
@@ -286,7 +291,7 @@ integer :: k0
         !    fi_fb = m_coord_b(j2,k2,2)
 
         !    delta_fi = fi_fb - fi_ib
-        !    ! wrap to [0,2pi)
+        !    ! wrap to [0,2pi)num_tot
         !    delta_fi = delta_fi - 2*pi*floor(delta_fi/(2*pi))
         !    ! (эквивалент if, но работает и для >2pi)
         !    xk   = delta_fi/dfi           ! in [0, n_fi)
@@ -346,9 +351,6 @@ integer::q1,q2,qq1,qq2
       k = 1
       do while( k.le.n_fi )
         I_e(i,j,k,1:2) = 0.d0
-!if((i.eq.3).and.(j.eq.6).and.(k.eq.1))then
-!  write(*,*)I_e(3,6,1,2)
-!end if
         i_pol = 1
         !== calculate two polarisations separately ==!
         do while(i_pol.le.2)
@@ -377,6 +379,139 @@ integer::q1,q2,qq1,qq2
               !== we still see the bottom of the atmosphere ==!
               I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + BB_Intensity_22(E,T_bottom)/2 * exp(-tau) &
                                                    + 3*mu*(F_E_target/2)/4/pi  * exp(-tau)
+            end if
+          else
+            !== downward propagation: accounting for upper layers ==!
+            ii = i      !== accounting for upper layers starting from the current one ==!
+            do while( (ii.ge.1).and.(tau.lt.tau_lim) )
+              if( ii.ne.1 )then
+                dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)
+              else
+                dSigma = mas_m_rho(ii,1)
+              end if
+              kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
+              dtau = dSigma * kappa / abs(mu)
+              if( dtau.ne.0.d0 )then
+                if( ii.ne.i )then
+                  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
+                else
+                  !== we are at the boundary of a layer ==!
+                  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau
+                end if
+              end if
+              !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
+              tau = tau + dtau
+              ii = ii-1
+            end do
+          end if
+          i_pol = i_pol+1
+        end do
+        k = k+1
+      end do
+      j = j+1
+    end do
+    i = i+1
+  end do
+  !== getting new source function ==!
+
+
+  !== get new souse function, in units kappa*B_22 ==!
+  S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
+  i = 1
+  do while(i.le.n_m)
+    j = 1
+    do while(j.le.n_mu)
+      k = 1
+      do while( k.le.n_fi )
+        !== integration over (4\pi) ==!
+        jj = 1
+        do while(jj.le.n_mu)
+          kk = 1
+          do while(kk.le.n_fi)
+            !!S(i,j,k,1) = S(i,j,k,1) + ( R(i,jj,j,kk,k,1,1)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,1)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+            !!S(i,j,k,2) = S(i,j,k,2) + ( R(i,jj,j,kk,k,1,2)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,2)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+
+            call get_index_for_R(q1,q2,qq1,qq2,frac,jj,j,kk,k,m_coord_b,n_mu,n_fi,dmu,dfi)
+            RR(1:2,1:2) = (1.d0-frac)*R_b(i,q1,q2,qq1,1:2,1:2) + frac*R_b(i,q1,q2,qq2,1:2,1:2)
+            !R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2) + frac*R_b(i,jj,jj2,k1,1:2,1:2)
+            S(i,j,k,1) = S(i,j,k,1) + ( RR(1,1)*I_e(i,jj,kk,1) + RR(2,1)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+            S(i,j,k,2) = S(i,j,k,2) + ( RR(1,2)*I_e(i,jj,kk,1) + RR(2,2)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
+
+            kk = kk+1
+          end do
+          jj = jj+1
+        end do
+        k = k+1
+      end do
+      j = j+1
+    end do
+    i = i+1
+  end do
+  !== now we have updated source function ==!
+return
+end subroutine RT_iterrations
+
+
+!==========================================================================================================================
+! ...
+!==========================================================================================================================
+subroutine RT_iterrations_2(I_e,S,E,S_0,T_eff,T_bottom,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
+use black_body
+implicit none
+real*8,intent(out)::S(n_m,n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2)
+integer,intent(in)::n_m,n_mu,n_fi
+real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,T_bottom,m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
+real*8,intent(in)::m_coord_b(n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
+integer::i,j,k,i1,i2,ii,i_pol,jj,kk
+real*8::pi=3.141592653589793d0
+real*8::dmu,dfi,mu,dSigma,tau,dtau,tau_lim,kappa
+real*8::kappa_T = 0.34d0
+real*8::F_E_target
+real*8::RR(2,2),frac
+integer::q1,q2,qq1,qq2
+
+  F_E_target = pi * BB_Intensity_22(E,T_eff)   !== used later to calculate emission from the bottom ==!
+
+  tau_lim = 50.d0   !== the maximal optical distance b/w points ==!
+  dmu = 2.d0/n_mu
+  dfi = 2*pi/n_fi
+
+  !== get intensity map ==!
+  i = 1
+  do while(i.le.n_m)
+    j = 1
+    do while( j.le.n_mu)
+      mu = -1.d0 + dmu/2 + (j-1)*dmu
+      k = 1
+      do while( k.le.n_fi )
+        I_e(i,j,k,1:2) = 0.d0
+        i_pol = 1
+        !== calculate two polarisations separately ==!
+        do while(i_pol.le.2)
+          tau = 0.d0
+          if( mu.ge.0.d0 )then
+            !== upward propagation: accounting for underling layers ==!
+            ii = i+1       !== accounting for layers below ==!
+            do while( (ii.le.n_m).and.(tau.lt.tau_lim) )
+              dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)                       !== colomn density of ii-layer ==!
+              kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)  !== total opacity due to abs and scattering ==!
+              dtau = dSigma * kappa / abs(mu)
+              if( dtau.ne.0.d0 )then
+                if( ii.ne.(i+1) )then
+                  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
+                else
+                  !== we are at the layer boundary ==!
+                  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau
+                end if
+              end if
+              !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
+              tau = tau + dtau
+              ii = ii+1
+            end do
+            !!== add intensity from the lower boundary ==!
+            if( ii.ge.n_m )then
+              !== we still see the bottom of the atmosphere ==!
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + BB_Intensity_22(E,T_bottom)/2 * exp(-tau)
             end if
           else
             !== downward propagation: accounting for upper layers ==!
@@ -448,7 +583,9 @@ integer::q1,q2,qq1,qq2
   end do
   !== now we have updated source function ==!
 return
-end subroutine RT_iterrations
+end subroutine RT_iterrations_2
+
+
 
 
 !================================================================================================
