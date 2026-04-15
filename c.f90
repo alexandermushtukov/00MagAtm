@@ -37,7 +37,7 @@ real(8) :: weights(0:2)
   T_floor  = 0.1d0
 
   lambda_T   = 0.25d0   ! Local temperature-correction damping
-  lambda_bot = 0.25d0   ! Bottom-temperature damping
+  lambda_bot = 0.15d0   ! Bottom-temperature damping
   tol_flux   = 1.d-3
   tol_dT     = 1.d-3
   iter_max   = 300
@@ -96,7 +96,7 @@ real(8) :: weights(0:2)
 
   T_bot = T_eff
 
-  ! === Temperature iterations ===
+  !=== Temperature iterations ===!
   i_iter = 0
   do while (i_iter .lt. iter_max)
 
@@ -168,9 +168,12 @@ real(8) :: weights(0:2)
     gradF(1) = gradF(2)
 
     ! --- Build temperature correction in a separate procedure ---
-    call build_temperature_correction(dT, dT_sm, max_rel_flux_err, max_rel_dT, &
-         mas_tau_TkeV, flux, gradF, F_target, n_m, lambda_T, T_floor, &
-         m_turn, p_weight, weights)
+    !call build_temperature_correction(dT, dT_sm, max_rel_flux_err, max_rel_dT, &
+    !     mas_tau_TkeV, flux, gradF, F_target, n_m, lambda_T, T_floor, &
+    !    m_turn, p_weight, weights)
+
+    call build_temperature_correction_UL(dT, dT_sm, max_rel_flux_err, max_rel_dT, &
+              mas_tau_TkeV, flux, F_target, n_m, lambda_T, T_floor, kappa_T, weights)
 
     ! --- Print atmospheric structure for the current iteration ---
     write(*,*) '# atmosphere structure, iter =', i_iter
@@ -193,11 +196,11 @@ real(8) :: weights(0:2)
 
     ! --- Global correction through the bottom boundary temperature ---
     flux_surf = flux(1)
-    !if (flux_surf .gt. 1.d-30) then
-    !  T_bot_new = T_bot * (F_target/flux_surf)**0.25d0
-    !  T_bot     = (1.d0-lambda_bot)*T_bot + lambda_bot*T_bot_new
-    !  T_bot     = max(T_floor, T_bot)
-    !end if
+    if (flux_surf .gt. 1.d-30) then
+      T_bot_new = T_bot * (F_target/flux_surf)**0.25d0
+      T_bot     = (1.d0-lambda_bot)*T_bot + lambda_bot*T_bot_new
+      T_bot     = max(T_floor, T_bot)
+    end if
 
     write(*,'(a,i5,2(a,es12.4),a,es12.4,a,es12.4,a,es12.4)') &
          '# iter=', i_iter, &
@@ -236,9 +239,9 @@ real(8) :: weights(0:2)
 end program MagAtm
 
 
-!======================================================================
+!==================================================================================
 ! Build local temperature correction from the flux gradient
-!======================================================================
+!==================================================================================
 subroutine build_temperature_correction(dT, dT_sm, max_rel_flux_err, max_rel_dT, &
                                         mas_tau_TkeV, flux, gradF, F_target, n,   &
                                         lambda_T, T_floor, m_turn, p_weight, weights)
@@ -307,6 +310,113 @@ real(8) :: weight_m(n)
 return
 end subroutine build_temperature_correction
 
+
+
+!======================================================================
+! Build Unsold-Lucy-type temperature correction from flux errors
+! with additional damping in the deepest layers
+!======================================================================
+subroutine build_temperature_correction_UL(dT, dT_sm, max_rel_flux_err, max_rel_dT, &
+                                           mas_tau_TkeV, flux, F_target, n,         &
+                                           lambda_T, T_floor, kappa_T, weights)
+implicit none
+integer, intent(in) :: n
+real(8), intent(in) :: mas_tau_TkeV(n,2), flux(n), F_target
+real(8), intent(in) :: lambda_T, T_floor, kappa_T
+real(8), intent(in) :: weights(0:2)
+
+real(8), intent(out) :: dT(n), dT_sm(n)
+real(8), intent(out) :: max_rel_flux_err, max_rel_dT
+
+integer :: i
+real(8) :: small, rel_flux_err, dtau, tau_eff
+real(8) :: tau(n), ferr(n), ferr_int(n)
+real(8) :: local_term, nonlocal_term, damp
+
+  small = 1.d-30
+
+  ! --- Build approximate optical-depth grid from column mass ---
+  do i = 1, n
+    tau(i) = max(kappa_T * mas_tau_TkeV(i,1), 1.d-12)
+  end do
+
+  ! --- Compute relative flux error with respect to the target flux ---
+  max_rel_flux_err = 0.d0
+  do i = 1, n
+    ferr(i) = (F_target - flux(i)) / max(F_target, small)
+    rel_flux_err = abs(ferr(i))
+    if (rel_flux_err .gt. max_rel_flux_err) max_rel_flux_err = rel_flux_err
+  end do
+
+  ! --- Build cumulative flux-error integral over optical depth ---
+  !     This is the non-local part of the Unsold-Lucy correction.
+  ferr_int(1) = 0.d0
+  do i = 2, n
+    dtau = tau(i) - tau(i-1)
+    ferr_int(i) = ferr_int(i-1) + 0.5d0 * (ferr(i) + ferr(i-1)) * dtau
+  end do
+
+  ! --- Build raw temperature correction ---
+  !
+  !     Practical UL-like form:
+  !       dT/T ~ (1/4) * [ a * local flux error
+  !                      + b * integrated flux error / (tau + 2/3) ]
+  !
+  !     The local term helps convergence in the outer layers,
+  !     while the integrated term provides the usual non-local behaviour.
+  !
+  dT(1) = 0.d0
+
+  do i = 2, n
+    tau_eff = max(tau(i) + 2.d0/3.d0, 1.d-8)
+
+    local_term    = 0.5d0 * ferr(i)
+    nonlocal_term = ferr_int(i) / tau_eff
+
+    dT(i) = lambda_T * 0.25d0 * mas_tau_TkeV(i,2) * (local_term + nonlocal_term)
+
+    ! --- Dampen the correction in the deepest layers ---
+    !
+    !     The last layer is a boundary layer and is usually better kept fixed.
+    !     The previous one or two layers are also damped to prevent oscillations.
+    !
+    if (i .eq. n) then
+      dT(i) = 0.d0
+    else if (i .eq. n-1) then
+      dT(i) = 0.15d0 * dT(i)
+    else if (i .eq. n-2) then
+      dT(i) = 0.30d0 * dT(i)
+    else if (i .eq. n-3) then
+      dT(i) = 0.50d0 * dT(i)
+    end if
+
+    ! --- Limit the relative correction step ---
+    if (abs(dT(i)) .gt. 0.05d0 * mas_tau_TkeV(i,2)) then
+      dT(i) = sign(0.05d0 * mas_tau_TkeV(i,2), dT(i))
+    end if
+  end do
+
+  ! --- Smooth the correction profile ---
+  call smooth_array(dT_sm, dT, n, 2, weights)
+
+  ! --- Keep the boundary correction fixed after smoothing ---
+  dT_sm(1) = dT(1)
+  dT_sm(n) = 0.d0
+
+  ! --- Apply additional damping after smoothing near the bottom ---
+  if (n .ge. 2) dT_sm(n-1) = 0.15d0 * dT_sm(n-1)
+  if (n .ge. 3) dT_sm(n-2) = 0.30d0 * dT_sm(n-2)
+  if (n .ge. 4) dT_sm(n-3) = 0.50d0 * dT_sm(n-3)
+
+  ! --- Compute the maximum relative temperature correction ---
+  max_rel_dT = 0.d0
+  do i = 1, n
+    rel_flux_err = abs(dT_sm(i)) / max(mas_tau_TkeV(i,2), small)
+    if (rel_flux_err .gt. max_rel_dT) max_rel_dT = rel_flux_err
+  end do
+
+return
+end subroutine build_temperature_correction_UL
 
 !======================================================================
 ! Smooth a 1D array using neighbour points and fixed weights
