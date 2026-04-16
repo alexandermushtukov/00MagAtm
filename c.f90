@@ -8,15 +8,16 @@ implicit none
 real*8 :: pi=3.141592653589793d0
 real*8 :: E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda,T_eff
 real*8 :: m_min,m_max,kappa_T,tau_min,tau_max
-integer :: n_m,n_mu,n_fi,i,n_E
+integer :: n_m,n_mu,n_fi,i,j,n_E
 real*8 :: g14,E_min,E_max,dE,F_E_target,F_target,T_floor
 real*8, allocatable :: mas_tau_TkeV(:,:), mas_m_rho(:,:), flux_tot(:,:), flux_E(:,:), J_E(:,:), &
-                       kabs_mean(:,:), spec(:,:), num(:,:), den(:,:), B(:), dBdT(:),            &
+                       kabs_mean(:,:),k_p(:),k_J(:),k_f(:),dk_p(:),dk_J(:),dk_f(:),du(:),dFz(:),u(:),u_p(:),Fz(:),&
+                       spec(:,:), num(:,:), den(:,:), B(:), dBdT(:),            &
                        dflux(:), dT(:), dT_sm(:), flux(:), gradF(:), weight_m(:)
 integer :: i_iter,jj
 character*100 :: file_sp,file_t
 real*8 :: eps
-real*8 :: sigma_SB_22_keV,T_bot,T_bot_new
+real*8 :: sigma_SB_22_keV,T_bot,T_bot_new,help
 
 ! --- Iteration-control variables ---
 real*8 :: lambda_T, lambda_bot
@@ -83,7 +84,8 @@ real(8) :: weights(0:2)
   tau_max = m_max*kappa_T
 
   allocate( mas_tau_TkeV(n_m,2), mas_m_rho(n_m,2), flux_tot(n_m,2), flux_E(n_m,2), J_E(n_m,2), &
-            kabs_mean(n_m,2), spec(n_E,3), num(n_m,2), den(n_m,2), B(n_m), dBdT(n_m),          &
+            kabs_mean(n_m,2),k_p(n_m),k_J(n_m),k_F(n_m),dk_p(n_m),dk_J(n_m),dk_F(n_m),du(n_m),dFz(n_m),u(n_m),u_p(n_m),Fz(n_m), &
+            spec(n_E,3), num(n_m,2), den(n_m,2), B(n_m), dBdT(n_m),          &
             dflux(n_m), dT(n_m), dT_sm(n_m), flux(n_m), gradF(n_m), weight_m(n_m) )
 
   ! === Initial temperature structure ===
@@ -110,16 +112,28 @@ real(8) :: weights(0:2)
     num(1:n_m,1:2)      = 0.d0
     den(1:n_m,1:2)      = 0.d0
 
-    ! --- Integrate radiative transfer over energy ---
+    !=== Integrate radiative transfer over energy ===!
+    k_p(1:n_m) = 0.d0
+    k_J(1:n_m) = 0.d0
+    k_F(1:n_m) = 0.d0
+    u(1:n_m) = 0.d0
+    Fz(1:n_m) = 0.d0
     i = 1
     do while (i .le. n_E)
-
       E  = E_min * (E_max/E_min)**( dble(i-1) / dble(n_E-1) )
       F_E_target = pi * BB_Intensity_22(E,T_eff)
       dE = E * ( (E_max/E_min)**(1.d0/dble(n_E-1)) - 1.d0 )
 
-      call pol_RT_fixE(flux_E,J_E,kabs_mean,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda, &
+      call pol_RT_fixE(flux_E,J_E,kabs_mean,dk_p,dk_J,dk_f,du,dFz,&
+                       E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda, &
                        mas_m_rho,mas_tau_TkeV,T_bot,n_m,n_mu,n_fi)
+
+      k_p(1:n_m)  = k_p(1:n_m)  + dk_p(1:n_m)*dE
+      k_J(1:n_m)  = k_J(1:n_m)  + dk_J(1:n_m)*dE
+      k_F(1:n_m)  = k_F(1:n_m)  + dk_F(1:n_m)*dE
+
+      u(1:n_m)  = u(1:n_m)  + du(1:n_m)*dE
+      Fz(1:n_m) = Fz(1:n_m) + dFz(1:n_m)*dE
 
       spec(i,1) = E
       spec(i,2) = flux_E(1,1)
@@ -131,21 +145,29 @@ real(8) :: weights(0:2)
       jj = 1
       do while (jj .le. n_m)
         B(jj) = BB_Intensity_22(E,mas_tau_TkeV(jj,2))/2.d0
-
         dBdT(jj) = ( BB_Intensity_22(E,mas_tau_TkeV(jj,2)*(1.d0+eps)) - &
                      BB_Intensity_22(E,mas_tau_TkeV(jj,2)*(1.d0-eps)) ) / &
                    ( 2.d0*eps*mas_tau_TkeV(jj,2) )
         dBdT(jj) = dBdT(jj)/2.d0
-
         num(jj,1:2) = num(jj,1:2) + kabs_mean(jj,1:2) * ( J_E(jj,1:2) - B(jj) ) * dE
         den(jj,1:2) = den(jj,1:2) + kabs_mean(jj,1:2) * dBdT(jj) * dE
-
         jj = jj + 1
       end do
 
       F_target = F_target + F_E_target*dE
       i = i + 1
     end do
+    i = 1
+    do while( i.le.n_m )
+      k_p(i) = k_p(i)/ 4/BB_Flux24( mas_tau_TkeV(i,2) )
+      k_J(i) = k_J(i)/u(i)
+      k_F(i) = k_F(i)*2/Fz(i)
+      i = i+1
+    end do
+    !== now I want real u and u_p ==!
+    u(1:n_m) = u(1:n_m)*2/3.d10
+    u_p(1:n_m) = 1.37d-8*( mas_tau_TkeV(1:n_m,2) )**4   !== [1.e22 erg/cm^3] ==!
+    !===============================!
 
     ! --- Build total flux profile ---
     flux(1:n_m)  = 0.d0
@@ -172,8 +194,36 @@ real(8) :: weights(0:2)
     !     mas_tau_TkeV, flux, gradF, F_target, n_m, lambda_T, T_floor, &
     !    m_turn, p_weight, weights)
 
-    call build_temperature_correction_UL(dT, dT_sm, max_rel_flux_err, max_rel_dT, &
-              mas_tau_TkeV, flux, F_target, n_m, lambda_T, T_floor, kappa_T, weights)
+    !call build_temperature_correction_UL(dT, dT_sm, max_rel_flux_err, max_rel_dT, &
+    !        mas_tau_TkeV, flux, F_target, n_m, lambda_T, T_floor, kappa_T, weights)
+
+    !== new temperature correction ==!
+    i = 1
+    do while( i.le.n_m )
+      help = 0.d0
+      j = 1
+      do while(j.le.(i-1))
+        if(j.eq.1)then
+          help = help + ( mas_tau_TkeV(j,1) - 0.d0 ) *k_F(j)/kappa_T* ( BB_Flux24(T_eff)*100 - Fz(j) )
+          !help = help + ( mas_tau_TkeV(j,1) - 0.d0 ) *k_F(j)/k_p(j)* ( BB_Flux24(T_eff)*100 - Fz(j) )
+        else
+          help = help + ( mas_tau_TkeV(j,1) - mas_tau_TkeV(j-1,1) ) &
+                        * (k_F(j) + k_F(j-1))/2  /kappa_T* ( BB_Flux24(T_eff)*100 - Fz(j) )
+          !help = help + ( mas_tau_TkeV(j,1) - mas_tau_TkeV(j-1,1) ) &
+          !               * k_F(j) /k_p(j) * ( BB_Flux24(T_eff)*100 - Fz(j) )
+
+        end if
+        j = j+1
+      end do
+      help = help + 2*( BB_Flux24(T_eff)*100 - Fz(0) )
+      dT(i) = mas_tau_TkeV(i,2)/ 16 / ( BB_Flux24(mas_tau_TkeV(i,2))*100 ) &
+               * ( 3.d10/k_p(i)*( k_J(i)*u(i) - k_p(i)*u_p(i) )  + k_J(i)/k_p(i)*help )
+
+      dT_sm(i) = dT(i)*0.4
+      dT_sm(i) = dT_sm(i)/abs(dT_sm(i)) * min( abs(dT_sm(i)),mas_tau_TkeV(i,2)/10 )
+      i = i+1
+    end do
+    !===================================!
 
     ! --- Print atmospheric structure for the current iteration ---
     write(*,*) '# atmosphere structure, iter =', i_iter
@@ -181,6 +231,7 @@ real(8) :: weights(0:2)
 
     i = 2
     do while (i .le. n_m)
+      !write(*,*)dT(i), k_J(i)*u(i) , k_p(i)*u_p(i), k_p(i),u_p(i),u(i)
       write(*,'(I5,1X,3F10.4,1X,ES12.4,1X,F10.4,1X,F12.4,1X,F12.4)') &
             i, mas_tau_TkeV(i,1), mas_tau_TkeV(i,2), mas_m_rho(i,2), &
             dT_sm(i), gradF(i), flux(i), F_target
@@ -210,7 +261,7 @@ real(8) :: weights(0:2)
          '  Ftarget=',      F_target, &
          '  T_bot=',        T_bot
 
-    if (max_rel_flux_err .lt. tol_flux .and. max_rel_dT .lt. tol_dT) exit
+    !if (max_rel_flux_err .lt. tol_flux .and. max_rel_dT .lt. tol_dT) exit
 
     i_iter = i_iter + 1
   end do
