@@ -37,17 +37,21 @@ end subroutine get_hydro_atm_structure
 
 !=======================================================================================================
 ! ...
+!   m_atm_kappa(n_m,n_mu,n_fi,1,1:2) = m_atm_abs_b(i,jj,1,1:2) * kappa_T   !== true absorption ==!
+!   m_atm_kappa(n_m,n_mu,n_fi,2,1:2) = m_atm_abs_b(i,jj,2,1:2) * kappa_T   !== absorption due to Compton  ==!
 !=======================================================================================================
-subroutine pol_RT_fixE(flux_tot,J_E,kabs_mean,E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,&
+subroutine pol_RT_fixE(flux_tot,J_E,kabs_mean,dk_p,dk_J,dk_f,du,dFz,&
+                       E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,&
                        T_bot,n_m,n_mu,n_fi)
+use black_body
 implicit none
-real*8,intent(out)::flux_tot(n_m,2),J_E(n_m,2),kabs_mean(n_m,2)
+real*8,intent(out)::flux_tot(n_m,2),J_E(n_m,2),kabs_mean(n_m,2),dk_p(n_m),dk_J(n_m),dk_f(n_m),du(n_m),dFz(n_m)
 real*8::pi=3.141592653589793d0
 real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2),T_bot
 integer,intent(in)::n_m,n_mu,n_fi
 real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
-real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2),m_coord_b(n_mu,n_fi,2)
-real*8::dmu,dfi,mu,theta,R_b(n_m,n_mu,n_mu,n_fi,2,2)
+real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),m_coord_b(n_mu,n_fi,2)
+real*8::dmu,dfi,mu,theta,R_b(n_m,n_mu,n_mu,n_fi,2,2),I_e(n_m,n_mu,n_fi,2)
 integer::i,k,j,i_max
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
@@ -62,7 +66,7 @@ integer::i,k,j,i_max
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   !== start iterrations ==!
-  S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)
+  S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)    !== [kappa*B_22] ==!
 
   !== iterrations of radiative transfer: start ==!
   flux_tot(1:n_m,1:2) = 0.d0
@@ -79,7 +83,7 @@ integer::i,k,j,i_max
       do while(j.le.n_mu)
         mu = -1.d0 + dmu/2 + (j-1)*dmu; theta = acos(mu)
         flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + I_e(1:n_m,j,k,1:2)*mu * dmu*dfi  !sin(theta)
-        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + I_e(1:n_m,j,k,1:2) * dmu*dfi
+        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + I_e(1:n_m,j,k,1:2) * dmu*dfi             !== [B22] ==!
         kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) + m_atm_kappa(1:n_m,j,k,1,1:2) * dmu*dfi
         j = j+1
       end do
@@ -93,6 +97,32 @@ integer::i,k,j,i_max
   J_E(1:n_m,1:2) = J_E(1:n_m,1:2) / (4*pi)
   kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) / (4*pi)
   !== iterrations of radiative transfer: end ==!
+
+  !== get dk_ ==!
+  dk_p(1:n_m) = 0.d0; dk_J(1:n_m) = 0.d0; dk_f(1:n_m) = 0.d0
+  du(1:n_m) = 0.d0
+  dFz(1:n_m) = 0.d0
+  i = 1
+  do while( i.le.n_m )
+    j = 1
+    do while( j.le.n_mu )
+      mu = -1.d0 + dmu/2 + (j-1)*dmu
+      k = 1
+      do while( k.le.n_fi )
+        dk_p(i) = dk_p(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1) + m_atm_kappa(i,j,k,1,2) ) * BB_Intensity_22(E,mas_tau_TkeV(i,2))
+        dk_J(i) = dk_J(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1)*I_e(i,j,k,1) + m_atm_kappa(i,j,k,1,2)*I_e(i,j,k,2) )
+        dk_f(i) = dk_f(i) + dmu*dfi* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
+                                     + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
+        du(i)  = du(i) + dmu*dfi*( I_e(i,j,k,1) + I_e(i,j,k,2) )
+        !dFz(i) = dFz(i) + 2*dmu*dfi* mu*( I_e(i,j,k,1) + I_e(i,j,k,2) )
+        dFz(i) = dFz(i) + dmu*dfi* mu*( I_e(i,j,k,1) + I_e(i,j,k,2) )
+        k = k+1
+      end do
+      j = j+1
+    end do
+    i = i+1
+  end do
+  !===================================!
 
   !== printing ==!
   k = 1
@@ -453,6 +483,9 @@ end subroutine RT_iterrations
 
 
 !==========================================================================================================================
+! ...
+!   [I_e] = [B22]
+!   [S] = [kappa*B22]
 ! ...
 !==========================================================================================================================
 subroutine RT_iterrations_2(I_e,S,E,S_0,T_eff,T_bottom,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
