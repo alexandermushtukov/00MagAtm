@@ -66,36 +66,36 @@ integer::i,k,j,i_max
 
   I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
   !== start iterrations ==!
-  S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)    !== [kappa*B_22] ==!
+  S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)    !== [kappa*B_22] : the 1st assumption about source function ==!
 
   !== iterrations of radiative transfer: start ==!
-  flux_tot(1:n_m,1:2) = 0.d0
-  J_E(1:n_m,1:2) = 0.d0
-  kabs_mean(1:n_m,1:2) = 0.d0
-  i_max = 5
+  i_max = 10   !== number of interraction ==!
   i=1
   do while(i.le.i_max)
+    flux_tot(1:n_m,1:2) = 0.d0
+    J_E(1:n_m,1:2) = 0.d0
+    kabs_mean(1:n_m,1:2) = 0.d0
     !call RT_iterrations(I_e,S,E,S_0,T_eff,mas_tau_TkeV(n_m,2),R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
     call RT_iterrations_2(I_e,S,E,S_0,T_eff,T_bot,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
+    !== integration over (4*pi) ==!
     k = 1
     do while(k.le.n_fi)
      j = 1
       do while(j.le.n_mu)
         mu = -1.d0 + dmu/2 + (j-1)*dmu; theta = acos(mu)
         flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + I_e(1:n_m,j,k,1:2)*mu * dmu*dfi  !sin(theta)
-        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + I_e(1:n_m,j,k,1:2) * dmu*dfi             !== [B22] ==!
+        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + I_e(1:n_m,j,k,1:2) * dmu*dfi               !== [B22] ==!
         kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) + m_atm_kappa(1:n_m,j,k,1,1:2) * dmu*dfi
         j = j+1
       end do
-      !write(*,*)
       k = k+1
     end do
-    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2) + S(1:n_m,1:n_mu,1:n_fi,1:2)
+    J_E(1:n_m,1:2) = J_E(1:n_m,1:2) / (4*pi)
+    kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) / (4*pi)
+    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2) + S(1:n_m,1:n_mu,1:n_fi,1:2)  !== updated assumtion abut source function ==!
     I_out_tot(1:n_mu,1:n_fi,1:2) = I_out(1:n_mu,1:n_fi,1:2)
     i = i+1
   end do
-  J_E(1:n_m,1:2) = J_E(1:n_m,1:2) / (4*pi)
-  kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) / (4*pi)
   !== iterrations of radiative transfer: end ==!
 
   !== get dk_ ==!
@@ -483,9 +483,10 @@ end subroutine RT_iterrations
 
 
 !==========================================================================================================================
-! ...
-!   [I_e] = [B22]
-!   [S] = [kappa*B22]
+! Solve Radiative Transfer for given source function S_0.
+! Output:
+!   [I_e] = [B22] - map of intensities
+!   [S] = [kappa*B22] - new source function due to scatterings.
 ! ...
 !==========================================================================================================================
 subroutine RT_iterrations_2(I_e,S,E,S_0,T_eff,T_bottom,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
@@ -580,9 +581,7 @@ integer::q1,q2,qq1,qq2
   end do
   !== getting new source function ==!
 
-!write(*,*)I_e(3,6,1,2)
-
-  !== get new souse function, in units kappa*B_22 ==!
+  !== get new souse function, in units [kappa*B_22] ==!
   S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
   i = 1
   do while(i.le.n_m)
