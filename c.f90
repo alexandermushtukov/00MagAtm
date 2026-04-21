@@ -37,8 +37,8 @@ real(8) :: weights(0:2)
   eps      = 1.d-2
   T_floor  = 0.1d0
 
-  lambda_T   = 0.25d0   ! Local temperature-correction damping
-  lambda_bot = 0.15d0   ! Bottom-temperature damping
+  lambda_T   = 0.25d0   !== Local temperature-correction damping
+  lambda_bot = 0.15d0   !== Bottom-temperature damping
   tol_flux   = 1.d-3
   tol_dT     = 1.d-3
   iter_max   = 300
@@ -53,7 +53,7 @@ real(8) :: weights(0:2)
   m_ns      = 1.4d0
   R6        = 1.d0
   B12       = 1.d2
-  theta_B   = 0.1d0
+  theta_B   = 0.02d0
   Z         = 1.d0
   A         = 1.d0
   dot_m_6   = 0.d0
@@ -66,7 +66,7 @@ real(8) :: weights(0:2)
   file_t ="./res/res_t_1_"
   open(unit = 26, file = file_t); close(26)
 
-  ! === Numerical parameters ===
+  !=== Numerical parameters ===!
   m_min = 1.d-2
   m_max = 1.d+4
   n_m   = 50
@@ -75,11 +75,11 @@ real(8) :: weights(0:2)
   n_E   = 20
   E_min = 0.1d0
   E_max = 7.d0
-  ! ============================
+  !============================!
 
   write(*,*) "# n_m=", n_m
 
-  kappa_T = 0.34d0
+  kappa_T = 0.4d0 !0.34d0
   tau_min = m_min*kappa_T
   tau_max = m_max*kappa_T
 
@@ -204,18 +204,18 @@ real(8) :: weights(0:2)
       j = 1
       do while(j.le.(i-1))
         if(j.eq.1)then
-          help = help + ( mas_tau_TkeV(j,1) - 0.d0 ) *k_F(j)/kappa_T* ( BB_Flux24(T_eff)*100 - Fz(j) )
-          !help = help + ( mas_tau_TkeV(j,1) - 0.d0 ) *k_F(j)/k_p(j)* ( BB_Flux24(T_eff)*100 - Fz(j) )
+          !help = help + ( mas_tau_TkeV(j,1) - 0.d0 ) *k_F(j)/kappa_T* ( BB_Flux24(T_eff)*100 - Fz(j) )
+          help = help + ( mas_tau_TkeV(j,1) - 0.d0 ) *k_F(j)/kappa_T* ( F_target - Fz(j) )
         else
-          help = help + ( mas_tau_TkeV(j,1) - mas_tau_TkeV(j-1,1) ) &
-                        * (k_F(j) + k_F(j-1))/2  /kappa_T* ( BB_Flux24(T_eff)*100 - Fz(j) )
           !help = help + ( mas_tau_TkeV(j,1) - mas_tau_TkeV(j-1,1) ) &
-          !               * k_F(j) /k_p(j) * ( BB_Flux24(T_eff)*100 - Fz(j) )
+          !              * (k_F(j) + k_F(j-1))/2  /kappa_T* ( BB_Flux24(T_eff)*100 - Fz(j) )
+          help = help + ( mas_tau_TkeV(j,1) - mas_tau_TkeV(j-1,1) ) &
+                        * (k_F(j) + k_F(j-1))/2  /kappa_T* ( F_target - Fz(j) )
 
         end if
         j = j+1
       end do
-      help = help + 2*( BB_Flux24(T_eff)*100 - Fz(0) )
+      help = help + 2*( BB_Flux24(T_eff)*100 - Fz(1) )
       dT(i) = mas_tau_TkeV(i,2)/ 16 / ( BB_Flux24(mas_tau_TkeV(i,2))*100 ) &
                * ( 3.d10/k_p(i)*( k_J(i)*u(i) - k_p(i)*u_p(i) )  + k_J(i)/k_p(i)*help )
 
