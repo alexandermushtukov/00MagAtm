@@ -73,7 +73,7 @@ integer::i,k,j,i_max
     flux_tot(1:n_m,1:2) = 0.d0
     J_E(1:n_m,1:2) = 0.d0
     kabs_mean(1:n_m,1:2) = 0.d0
-    call RT_iterrations(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
+    call RT_iterrations_v2(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
     !== integration over (4*pi) ==!
     k = 1
     do while(k.le.n_fi)
@@ -90,8 +90,8 @@ integer::i,k,j,i_max
     end do
     J_E(1:n_m,1:2) = J_E(1:n_m,1:2) / (4*pi)
     kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) / (4*pi)
-!write(*,*)"#b: ",i,i_max,flux_tot(45,1:2)," !!! ",J_E(45,1:2),kabs_mean(45,1:2),E  !,mas_m_rho(5,2),E
-!read(*,*)
+    !write(*,*)"#b: ",i,i_max,flux_tot(45,1:2)," !!! ",J_E(45,1:2),kabs_mean(45,1:2),E  !,mas_m_rho(5,2),E
+    !read(*,*)
     S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2) + S(1:n_m,1:n_mu,1:n_fi,1:2)  !== updated assumtion abut source function ==!
     I_out_tot(1:n_mu,1:n_fi,1:2) = I_out(1:n_mu,1:n_fi,1:2)
     i = i+1
@@ -200,12 +200,10 @@ integer :: k0
       theta_i = acos(mu_i)
       KK_b(i,j,1) = NormWavesEll_cvp_(2,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== (+)-mode ==!
       KK_b(i,j,2) = NormWavesEll_cvp_(1,E,E_cyc,theta_i,mas_m_rho(i,2),Z,A)  !== (-)-mode ==!
-
-!if( isnan(KK_b(i,j,2)) )then
-!  write(*,*)"@",KK_b(i,j,2),E,E_cyc,theta_i,mas_m_rho(i,2),Z,A
-!  read(*,*)
-!end if
-
+      !if( isnan(KK_b(i,j,2)) )then
+      !  write(*,*)"@",KK_b(i,j,2),E,E_cyc,theta_i,mas_m_rho(i,2),Z,A
+      !  read(*,*)
+      !end if
       j = j+1
     end do
     i = i+1
@@ -403,7 +401,6 @@ real*8 :: Bbot, Bprev, dBdm, dBdTauNu, Ibot, dm_bot
                   I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) )
                 end if
               end if
-              !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
               tau = tau + dtau
               ii = ii+1
             end do
@@ -469,20 +466,9 @@ real*8 :: Bbot, Bprev, dBdm, dBdTauNu, Ibot, dm_bot
         do while(jj.le.n_mu)
           kk = 1
           do while(kk.le.n_fi)
-            !!S(i,j,k,1) = S(i,j,k,1) + ( R(i,jj,j,kk,k,1,1)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,1)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
-            !!S(i,j,k,2) = S(i,j,k,2) + ( R(i,jj,j,kk,k,1,2)*I_e(i,jj,kk,1) + R(i,jj,j,kk,k,2,2)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
 
             call get_index_for_R(q1,q2,qq1,qq2,frac,jj,j,kk,k,m_coord_b,n_mu,n_fi,dmu,dfi)
             RR(1:2,1:2) = (1.d0-frac)*R_b(i,q1,q2,qq1,1:2,1:2) + frac*R_b(i,q1,q2,qq2,1:2,1:2)
-            !R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2) + frac*R_b(i,jj,jj2,k1,1:2,1:2)
-            !S(i,j,k,1) = S(i,j,k,1) + ( RR(1,1)*I_e(i,jj,kk,1) + RR(2,1)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
-            !S(i,j,k,2) = S(i,j,k,2) + ( RR(1,2)*I_e(i,jj,kk,1) + RR(2,2)*I_e(i,jj,kk,2) )*kappa_T * dmu*dfi
-
-            !kappa_help = m_atm_kappa(i,j,k,1,1) + m_atm_kappa(i,j,k,2,1)  !== total opacity: abs + scattering
-            !S(i,j,k,1) = S(i,j,k,1) + ( RR(1,1)*I_e(i,jj,kk,1) + RR(2,1)*I_e(i,jj,kk,2) )*kappa_help * dmu*dfi
-            !kappa_help = m_atm_kappa(i,j,k,1,2) + m_atm_kappa(i,j,k,2,2)  !== total opacity: abs + scattering
-            !S(i,j,k,2) = S(i,j,k,2) + ( RR(1,2)*I_e(i,jj,kk,1) + RR(2,2)*I_e(i,jj,kk,2) )*kappa_help * dmu*dfi
-
             S(i,j,k,1) = S(i,j,k,1) + ( RR(1,1)*I_e(i,jj,kk,1)*m_atm_kappa(i,jj,kk,2,1) &
                                       + RR(2,1)*I_e(i,jj,kk,2)*m_atm_kappa(i,jj,kk,2,2) ) * dmu*dfi
             S(i,j,k,2) = S(i,j,k,2) + ( RR(1,2)*I_e(i,jj,kk,1)*m_atm_kappa(i,jj,kk,2,1) &
@@ -502,6 +488,219 @@ real*8 :: Bbot, Bprev, dBdm, dBdTauNu, Ibot, dm_bot
 return
 end subroutine RT_iterrations
 
+
+
+!==========================================================================================================================
+! Solve Radiative Transfer for given source function S_0.
+! Output:
+!   [I_e] = [B22] - map of intensities
+!   [S] = [kappa*B22] - new source function due to scatterings.
+! ...
+!   V2: accelerated version
+!       1) intensity is built by sweeps over depth
+!       2) angular interpolation indices for R are precomputed once
+!==========================================================================================================================
+subroutine RT_iterrations_v2(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,Tbot,Tprev)
+use black_body
+implicit none
+real*8,intent(out)::S(n_m,n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2)
+integer,intent(in)::n_m,n_mu,n_fi
+real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2),Tbot,Tprev
+real*8,intent(in)::m_coord_b(n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
+
+integer::i,j,k,ii,i_pol,jj,kk
+real*8::pi=3.141592653589793d0
+real*8::dmu,dfi,mu,dSigma,dtau,kappa
+real*8::kappa_T = 0.4d0
+real*8::RR(2,2),frac
+integer::q1,q2,qq1,qq2
+real*8 :: Bbot, Bprev, dBdm, dBdTauNu, Ibot, dm_bot
+
+!== arrays for accelerated intensity sweeps ==!
+real*8::A_up(n_m),tr_up(n_m),I_up(n_m)
+real*8::A_dn(n_m),tr_dn(n_m),I_dn(n_m)
+
+!== arrays for precomputed angular mapping ==!
+integer::map_q1(n_mu,n_mu,n_fi,n_fi),map_q2(n_mu,n_mu,n_fi,n_fi)
+integer::map_qq1(n_mu,n_mu,n_fi,n_fi),map_qq2(n_mu,n_mu,n_fi,n_fi)
+real*8 :: map_frac(n_mu,n_mu,n_fi,n_fi)
+
+  dmu = 2.d0/n_mu
+  dfi = 2*pi/n_fi
+
+  !== precompute angular map for R interpolation ==!
+  jj = 1
+  do while(jj.le.n_mu)
+    j = 1
+    do while(j.le.n_mu)
+      kk = 1
+      do while(kk.le.n_fi)
+        k = 1
+        do while(k.le.n_fi)
+          call get_index_for_R(q1,q2,qq1,qq2,frac,jj,j,kk,k,m_coord_b,n_mu,n_fi,dmu,dfi)
+          map_q1(jj,j,kk,k) = q1
+          map_q2(jj,j,kk,k) = q2
+          map_qq1(jj,j,kk,k) = qq1
+          map_qq2(jj,j,kk,k) = qq2
+          map_frac(jj,j,kk,k) = frac
+          k = k+1
+        end do
+        kk = kk+1
+      end do
+      j = j+1
+    end do
+    jj = jj+1
+  end do
+
+  !== get intensity map ==!
+  j = 1
+  do while( j.le.n_mu )
+    mu = -1.d0 + dmu/2 + (j-1)*dmu
+    k = 1
+    do while( k.le.n_fi )
+      i_pol = 1
+      do while(i_pol.le.2)
+
+        if( mu.ge.0.d0 )then
+          !== upward propagation: sweep from bottom to top ==!
+          A_up(1:n_m) = 0.d0
+          tr_up(1:n_m) = 0.d0
+          I_up(1:n_m) = 0.d0
+
+          ii = 2
+          do while(ii.le.n_m)
+            dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)
+            kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)
+            dtau = dSigma * kappa / abs(mu)
+
+            if( dtau.ne.0.d0 )then
+              A_up(ii) = S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) )
+              tr_up(ii) = exp(-dtau)
+            else
+              A_up(ii) = 0.d0
+              tr_up(ii) = 1.d0
+            end if
+
+            ii = ii+1
+          end do
+
+          ! --- Diffusion-type lower boundary condition, analogous to eq. (2.10) ---
+          Bbot  = BB_Intensity_22(E, Tbot)
+          Bprev = BB_Intensity_22(E, Tprev)
+          dm_bot = max( mas_m_rho(n_m,1) - mas_m_rho(n_m-1,1), 1.d-30 )
+          dBdm = (Bbot - Bprev) / dm_bot
+
+          kappa = m_atm_kappa(n_m,j,k,1,i_pol) + m_atm_kappa(n_m,j,k,2,i_pol)
+          kappa = max(kappa, 1.d-30)
+          dBdTauNu = dBdm / kappa
+
+          Ibot = 0.5d0 * ( Bbot + mu * dBdTauNu )
+          Ibot = max(0.d0, Ibot)
+
+          I_up(n_m) = Ibot
+          i = n_m-1
+          do while(i.ge.1)
+            I_up(i) = A_up(i+1) + tr_up(i+1) * I_up(i+1)
+            i = i-1
+          end do
+
+          i = 1
+          do while(i.le.n_m)
+            I_e(i,j,k,i_pol) = I_up(i)
+            i = i+1
+          end do
+
+        else
+          !== downward propagation: sweep from top to bottom ==!
+          A_dn(1:n_m) = 0.d0
+          tr_dn(1:n_m) = 0.d0
+          I_dn(1:n_m) = 0.d0
+
+          ii = 1
+          do while(ii.le.n_m)
+            if( ii.ne.1 )then
+              dSigma = mas_m_rho(ii,1) - mas_m_rho(ii-1,1)
+            else
+              dSigma = mas_m_rho(ii,1)
+            end if
+
+            kappa = m_atm_kappa(ii,j,k,1,i_pol) + m_atm_kappa(ii,j,k,2,i_pol)
+            dtau = dSigma * kappa / abs(mu)
+
+            if( dtau.ne.0.d0 )then
+              A_dn(ii) = S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) )
+              tr_dn(ii) = exp(-dtau)
+            else
+              A_dn(ii) = 0.d0
+              tr_dn(ii) = 1.d0
+            end if
+
+            ii = ii+1
+          end do
+
+          I_dn(1) = A_dn(1)
+          i = 2
+          do while(i.le.n_m)
+            I_dn(i) = A_dn(i) + tr_dn(i) * I_dn(i-1)
+            i = i+1
+          end do
+
+          i = 1
+          do while(i.le.n_m)
+            I_e(i,j,k,i_pol) = I_dn(i)
+            i = i+1
+          end do
+
+        end if
+
+        i_pol = i_pol+1
+      end do
+      k = k+1
+    end do
+    j = j+1
+  end do
+  !== getting new source function ==!
+
+  !== get new souse function, in units [kappa*B_22] ==!
+  S(1:n_m,1:n_mu,1:n_fi,1:2) = 0.d0
+  i = 1
+  do while(i.le.n_m)
+    j = 1
+    do while(j.le.n_mu)
+      k = 1
+      do while( k.le.n_fi )
+        !== integration over (4\pi) ==!
+        jj = 1
+        do while(jj.le.n_mu)
+          kk = 1
+          do while(kk.le.n_fi)
+
+            q1 = map_q1(jj,j,kk,k)
+            q2 = map_q2(jj,j,kk,k)
+            qq1 = map_qq1(jj,j,kk,k)
+            qq2 = map_qq2(jj,j,kk,k)
+            frac = map_frac(jj,j,kk,k)
+
+            RR(1:2,1:2) = (1.d0-frac)*R_b(i,q1,q2,qq1,1:2,1:2) + frac*R_b(i,q1,q2,qq2,1:2,1:2)
+
+            S(i,j,k,1) = S(i,j,k,1) + ( RR(1,1)*I_e(i,jj,kk,1)*m_atm_kappa(i,jj,kk,2,1) &
+                                      + RR(2,1)*I_e(i,jj,kk,2)*m_atm_kappa(i,jj,kk,2,2) ) * dmu*dfi
+            S(i,j,k,2) = S(i,j,k,2) + ( RR(1,2)*I_e(i,jj,kk,1)*m_atm_kappa(i,jj,kk,2,1) &
+                                      + RR(2,2)*I_e(i,jj,kk,2)*m_atm_kappa(i,jj,kk,2,2) ) * dmu*dfi
+
+            kk = kk+1
+          end do
+          jj = jj+1
+        end do
+        k = k+1
+      end do
+      j = j+1
+    end do
+    i = i+1
+  end do
+  !== now we have updated source function ==!
+return
+end subroutine RT_iterrations_v2
 
 
 !================================================================================================

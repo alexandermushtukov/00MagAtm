@@ -12,8 +12,8 @@ integer :: n_m,n_mu,n_fi,i,j,n_E
 real*8 :: g14,E_min,E_max,dE,F_E_target,F_target,T_floor
 real*8, allocatable :: mas_tau_TkeV(:,:), mas_m_rho(:,:), flux_tot(:,:), flux_E(:,:), J_E(:,:), J_tot(:,:), &
                        kabs_mean(:,:),k_p(:),k_J(:),k_f(:),dk_p(:),dk_J(:),dk_f(:),du(:),dFz(:),u(:),u_p(:),Fz(:),&
-                       spec(:,:), num(:,:), den(:,:), B(:), dBdT(:),            &
-                       dflux(:), dT(:), dT_sm(:), flux(:), gradF(:), weight_m(:)
+                       spec(:,:),&
+                       dflux(:), dT(:), dT_sm(:), flux(:), gradF(:), weight_m(:),TkeV_old(:)
 integer :: i_iter,jj
 character*100 :: file_sp,file_t
 real*8 :: eps
@@ -23,7 +23,6 @@ real*8 :: sigma_SB_22_keV,T_bot,T_bot_new,help
 real*8 :: lambda_T, lambda_bot
 real*8 :: max_rel_flux_err, max_rel_dT, rel_flux_err
 real*8 :: flux_surf, dm, gradF_scale
-real*8 :: tol_flux, tol_dT
 real*8 :: m_turn, p_weight, wloc
 integer :: iter_max
 real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,eps_Flog_,eps_Fmax_,eps_rough_
@@ -34,8 +33,6 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
 
   lambda_T   = 0.25d0   !== Local temperature-correction damping
   lambda_bot = 0.15d0   !== Bottom-temperature damping
-  tol_flux   = 1.d-3
-  tol_dT     = 1.d-3
   iter_max   = 300
 
   m_turn   = 100.d0     ! Depth scale where the correction starts to be suppressed
@@ -80,8 +77,7 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
 
   allocate( mas_tau_TkeV(n_m,2), mas_m_rho(n_m,2), flux_tot(n_m,2), flux_E(n_m,2), J_E(n_m,2), J_tot(n_m,2), &
             kabs_mean(n_m,2),k_p(n_m),k_J(n_m),k_F(n_m),dk_p(n_m),dk_J(n_m),dk_F(n_m),du(n_m),dFz(n_m),u(n_m),u_p(n_m),Fz(n_m), &
-            spec(n_E,3), num(n_m,2), den(n_m,2), B(n_m), dBdT(n_m),          &
-            dflux(n_m), dT(n_m), dT_sm(n_m), flux(n_m), gradF(n_m), weight_m(n_m) )
+            spec(n_E,3),dflux(n_m), dT(n_m), dT_sm(n_m), flux(n_m), gradF(n_m), weight_m(n_m), TkeV_old(n_m) )
 
   ! === Initial temperature structure ===
   i = 1
@@ -90,6 +86,7 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
     mas_tau_TkeV(i,2) = T_eff / 1.2d0
     i = i + 1
   end do
+  TkeV_old(1:n_m) = mas_tau_TkeV(1:n_m,2)
 
   T_bot = T_eff
 
@@ -109,8 +106,6 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
 
     F_target = 0.d0
     flux_tot(1:n_m,1:2) = 0.d0
-    num(1:n_m,1:2)      = 0.d0
-    den(1:n_m,1:2)      = 0.d0
 
     !=== Integrate radiative transfer over energy ===!
     k_p(1:n_m) = 0.d0
@@ -143,19 +138,6 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
       spec(i,3) = flux_E(1,2)
 
       flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + flux_E(1:n_m,1:2)*dE
-
-      ! These arrays are kept for diagnostics and possible future hybrid correction
-      jj = 1
-      do while (jj .le. n_m)
-        B(jj) = BB_Intensity_22(E,mas_tau_TkeV(jj,2))/2.d0
-        dBdT(jj) = ( BB_Intensity_22(E,mas_tau_TkeV(jj,2)*(1.d0+eps)) - &
-                     BB_Intensity_22(E,mas_tau_TkeV(jj,2)*(1.d0-eps)) ) / &
-                   ( 2.d0*eps*mas_tau_TkeV(jj,2) )
-        dBdT(jj) = dBdT(jj)/2.d0
-        num(jj,1:2) = num(jj,1:2) + kabs_mean(jj,1:2) * ( J_E(jj,1:2) - B(jj) ) * dE
-        den(jj,1:2) = den(jj,1:2) + kabs_mean(jj,1:2) * dBdT(jj) * dE
-        jj = jj + 1
-      end do
 
       F_target = F_target + F_E_target*dE
       i = i + 1
@@ -194,11 +176,15 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
 
     call get_accur_metrics(delta_surf,eps_surf,eps_Fmax,eps_Flog,eps_rough,F_target,Fz,mas_tau_TkeV,n_m)
     if( abs(eps_Flog).lt.abs(1.5*eps_Flog_) )then
+      !== new temperature profile is not that bad ==!
+      TkeV_old(1:n_m) = mas_tau_TkeV(1:n_m,2)
       call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m)
       dT_sm(1:n_m) = dT(1:n_m)
       eps_Flog_ =    eps_Flog
     else
-      dT_sm(1:n_m) = -dT(1:n_m)  !== we go back ==!
+      mas_tau_TkeV(1:n_m,2) = TkeV_old(1:n_m)  !== come back to better temperature profile ==!
+      !dT_sm(1:n_m) = -dT(1:n_m)  !== we go back ==!
+      dT_sm(1:n_m) = dT_sm(1:n_m)/2  !== we go back ==!
       write(*,*)"!!!"
     end if
 
@@ -231,7 +217,6 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
       T_bot     = max(T_floor, T_bot)
     end if
 
-    !if (max_rel_flux_err .lt. tol_flux .and. max_rel_dT .lt. tol_dT) exit
     i_iter = i_iter + 1
   end do
 
