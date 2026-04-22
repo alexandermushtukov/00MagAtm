@@ -1,23 +1,46 @@
 !===================================================================================
+! Getting metrics for temperature profile.
 !===================================================================================
-subroutine get_accur_metrics(eps_surf,eps_Fmax,eps_Flog,F_target,Fz,mas_tau_TkeV,n_m)
+subroutine get_accur_metrics(delta_surf,eps_Fmax,delta_Flog,eps_Flog,eps_rough,F_target,Fz,mas_tau_TkeV,n_m)
 implicit none
-real*8,intent(out)::eps_surf,eps_Fmax,eps_Flog
+real*8,intent(out)::delta_surf,eps_Fmax,delta_Flog,eps_Flog,eps_rough
 real*8,intent(in)::F_target,Fz(n_m),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m
-real*8::help
+real*8::help,help2,w,rel_err,drel
 integer::i
-  eps_surf = abs(F_target - Fz(1))/F_target
+  delta_surf = ( Fz(1) - F_target ) / max(F_target,1.d-30)
+
   eps_Fmax = 0.d0
-  eps_Flog = 0.d0; help = 0.d0
+  delta_Flog = 0.d0
+  eps_Flog = 0.d0
+  eps_rough = 0.d0
+  help = 0.d0;  help2 = 0.d0
   i=2
   do while(i.le.n_m)
-    eps_Fmax = max( eps_Fmax, abs(F_target - Fz(1))/F_target )
-    eps_Flog = eps_Flog + log( mas_tau_TkeV(i,1) - mas_tau_TkeV(i-1,1) ) * ( (F_target - Fz(1))/F_target )**2
-    help = help + log( mas_tau_TkeV(i,1) - mas_tau_TkeV(i-1,1) )
+    w = log( mas_tau_TkeV(i,1) / mas_tau_TkeV(i-1,1) )
+    rel_err = ( Fz(i) - F_target ) / max(F_target,1.d-30)
+    eps_Fmax = max( eps_Fmax, abs(rel_err) )
+    delta_Flog = delta_Flog + w * rel_err
+    eps_Flog = eps_Flog + w * rel_err**2
+    help = help + w
+    drel = ( Fz(i) - Fz(i-1) ) / max(F_target,1.d-30)
+    eps_rough = eps_rough + w * drel**2
+    help2 = help2 + w
     i = i+1
   end do
-  eps_Flog = sqrt(eps_Flog/help)
+
+  if( help.gt.0.d0 )then
+    delta_Flog = delta_Flog / help
+    eps_Flog = sqrt( eps_Flog / help )
+  else
+    delta_Flog = 0.d0;  eps_Flog = 0.d0
+  end if
+
+  if( help2.gt.0.d0 )then
+    eps_rough = sqrt( eps_rough / help2 )
+  else
+    eps_rough = 0.d0
+  end if
 return
 end subroutine get_accur_metrics
 

@@ -26,7 +26,7 @@ real*8 :: flux_surf, dm, gradF_scale
 real*8 :: tol_flux, tol_dT
 real*8 :: m_turn, p_weight, wloc
 integer :: iter_max
-real*8:: eps_surf,eps_Flog,eps_Fmax
+real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,eps_Flog_,eps_Fmax_,eps_rough_
 
   sigma_SB_22_keV = 1.027d2
   eps      = 1.d-2
@@ -94,10 +94,15 @@ real*8:: eps_surf,eps_Flog,eps_Fmax
   T_bot = T_eff
 
   !=== Temperature iterations ===!
+  delta_surf_= 1.d3
+  eps_surf_ =  1.d3
+  eps_Flog_ =  1.d3
+  eps_Fmax_ =  1.d3
+  eps_rough_=  1.d3
   i_iter = 0
   do while (i_iter .lt. iter_max)
 
-    write(*,*) "# start iter:", i_iter
+    write(*,*); write(*,*) "# start iter:", i_iter
 
     ! --- Compute hydrostatic structure for the current temperature profile ---
     call get_hydro_atm_structure(mas_m_rho,g14,dot_m_6,ln_Lambda,tau_min,tau_max,n_m,mas_tau_TkeV)
@@ -187,9 +192,16 @@ real*8:: eps_surf,eps_Flog,eps_Fmax
     end do
     gradF(1) = gradF(2)
 
-    call get_accur_metrics(eps_surf,eps_Fmax,eps_Flog,F_target,Fz,mas_tau_TkeV,n_m)
-    call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m)
-    dT_sm(1:n_m) = dT(1:n_m)
+    call get_accur_metrics(delta_surf,eps_surf,eps_Fmax,eps_Flog,eps_rough,F_target,Fz,mas_tau_TkeV,n_m)
+    if( abs(eps_Flog).lt.abs(1.5*eps_Flog_) )then
+      call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m)
+      dT_sm(1:n_m) = dT(1:n_m)
+      eps_Flog_ =    eps_Flog
+    else
+      dT_sm(1:n_m) = -dT(1:n_m)  !== we go back ==!
+      write(*,*)"!!!"
+    end if
+
 
     !=== Print atmospheric structure for the current iteration ===!
     write(*,*) '# atmosphere structure, iter =', i_iter
@@ -202,16 +214,16 @@ real*8:: eps_surf,eps_Flog,eps_Fmax
             dT_sm(i), flux(i), F_target, J_tot(i,1:2)
       i = i + 1
     end do
-    write(*,*)"# ", eps_surf, eps_Flog, eps_Fmax
+    write(*,*)"# ", eps_surf, eps_Flog, eps_Fmax, eps_rough
 
-    ! --- Update the temperature profile ---
+    !=== Update the temperature profile ===!
     i = 1
     do while (i .le. n_m)
       mas_tau_TkeV(i,2) = max(T_floor, mas_tau_TkeV(i,2) + dT_sm(i))
       i = i + 1
     end do
 
-    ! --- Global correction through the bottom boundary temperature ---
+    !=== Global correction through the bottom boundary temperature ===!
     flux_surf = flux(1)
     if (flux_surf .gt. 1.d-30) then
       T_bot_new = T_bot * (F_target/flux_surf)**0.25d0
@@ -219,16 +231,7 @@ real*8:: eps_surf,eps_Flog,eps_Fmax
       T_bot     = max(T_floor, T_bot)
     end if
 
-    write(*,'(a,i5,2(a,es12.4),a,es12.4,a,es12.4,a,es12.4)') &
-         '# iter=', i_iter, &
-         '  max_flux_err=', max_rel_flux_err, &
-         '  max_rel_dT=',   max_rel_dT, &
-         '  Fsurf=',        flux_surf, &
-         '  Ftarget=',      F_target, &
-         '  T_bot=',        T_bot
-
     !if (max_rel_flux_err .lt. tol_flux .and. max_rel_dT .lt. tol_dT) exit
-
     i_iter = i_iter + 1
   end do
 
