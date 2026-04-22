@@ -10,7 +10,7 @@ real*8 :: E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda,T_eff
 real*8 :: m_min,m_max,kappa_T,tau_min,tau_max
 integer :: n_m,n_mu,n_fi,i,j,n_E
 real*8 :: g14,E_min,E_max,dE,F_E_target,F_target,T_floor
-real*8, allocatable :: mas_tau_TkeV(:,:), mas_m_rho(:,:), flux_tot(:,:), flux_E(:,:), J_E(:,:), &
+real*8, allocatable :: mas_tau_TkeV(:,:), mas_m_rho(:,:), flux_tot(:,:), flux_E(:,:), J_E(:,:), J_tot(:,:), &
                        kabs_mean(:,:),k_p(:),k_J(:),k_f(:),dk_p(:),dk_J(:),dk_f(:),du(:),dFz(:),u(:),u_p(:),Fz(:),&
                        spec(:,:), num(:,:), den(:,:), B(:), dBdT(:),            &
                        dflux(:), dT(:), dT_sm(:), flux(:), gradF(:), weight_m(:)
@@ -52,7 +52,7 @@ real(8) :: weights(0:2)
   T_eff     = 2.d0
   m_ns      = 1.4d0
   R6        = 1.d0
-  B12       = 1.d2
+  B12       = 5.d1
   theta_B   = 0.02d0
   Z         = 1.d0
   A         = 1.d0
@@ -68,13 +68,13 @@ real(8) :: weights(0:2)
 
   !=== Numerical parameters ===!
   m_min = 1.d-2
-  m_max = 1.d+4
+  m_max = 1.d+3
   n_m   = 50
-  n_mu  = 10
+  n_mu  = 12
   n_fi  = 1
-  n_E   = 20
-  E_min = 0.1d0
-  E_max = 7.d0
+  n_E   = 40
+  E_min = 1.0d0
+  E_max = 10.d0
   !============================!
 
   write(*,*) "# n_m=", n_m
@@ -83,7 +83,7 @@ real(8) :: weights(0:2)
   tau_min = m_min*kappa_T
   tau_max = m_max*kappa_T
 
-  allocate( mas_tau_TkeV(n_m,2), mas_m_rho(n_m,2), flux_tot(n_m,2), flux_E(n_m,2), J_E(n_m,2), &
+  allocate( mas_tau_TkeV(n_m,2), mas_m_rho(n_m,2), flux_tot(n_m,2), flux_E(n_m,2), J_E(n_m,2), J_tot(n_m,2), &
             kabs_mean(n_m,2),k_p(n_m),k_J(n_m),k_F(n_m),dk_p(n_m),dk_J(n_m),dk_F(n_m),du(n_m),dFz(n_m),u(n_m),u_p(n_m),Fz(n_m), &
             spec(n_E,3), num(n_m,2), den(n_m,2), B(n_m), dBdT(n_m),          &
             dflux(n_m), dT(n_m), dT_sm(n_m), flux(n_m), gradF(n_m), weight_m(n_m) )
@@ -118,6 +118,7 @@ real(8) :: weights(0:2)
     k_F(1:n_m) = 0.d0
     u(1:n_m) = 0.d0
     Fz(1:n_m) = 0.d0
+    J_tot(1:n_m,1:2) = 0.d0
     i = 1
     do while (i .le. n_E)
       E  = E_min * (E_max/E_min)**( dble(i-1) / dble(n_E-1) )
@@ -127,7 +128,9 @@ real(8) :: weights(0:2)
       call pol_RT_fixE(flux_E,J_E,kabs_mean,dk_p,dk_J,dk_f,du,dFz,&
                        E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda, &
                        mas_m_rho,mas_tau_TkeV,T_bot,n_m,n_mu,n_fi)
-
+ 
+      J_tot(1:n_m,1:2) = J_tot(1:n_m,1:2) + J_e(1:n_m,1:2)*dE
+ 
       k_p(1:n_m)  = k_p(1:n_m)  + dk_p(1:n_m)*dE
       k_J(1:n_m)  = k_J(1:n_m)  + dk_J(1:n_m)*dE
       k_F(1:n_m)  = k_F(1:n_m)  + dk_F(1:n_m)*dE
@@ -177,7 +180,7 @@ real(8) :: weights(0:2)
     i = 1
     do while (i .le. n_m)
       flux(i) = flux_tot(i,1) + flux_tot(i,2)
-      i = i + 1
+      i = i+1
     end do
 
     i = 2
@@ -201,6 +204,7 @@ real(8) :: weights(0:2)
     i = 1
     do while( i.le.n_m )
       help = 0.d0
+      !== integration from 0 to given point ==!
       j = 1
       do while(j.le.(i-1))
         if(j.eq.1)then
@@ -211,15 +215,15 @@ real(8) :: weights(0:2)
           !              * (k_F(j) + k_F(j-1))/2  /kappa_T* ( BB_Flux24(T_eff)*100 - Fz(j) )
           help = help + ( mas_tau_TkeV(j,1) - mas_tau_TkeV(j-1,1) ) &
                         * (k_F(j) + k_F(j-1))/2  /kappa_T* ( F_target - Fz(j) )
-
         end if
         j = j+1
       end do
+      !== end integration ==!
       help = help + 2*( BB_Flux24(T_eff)*100 - Fz(1) )
       dT(i) = mas_tau_TkeV(i,2)/ 16 / ( BB_Flux24(mas_tau_TkeV(i,2))*100 ) &
-               * ( 3.d10/k_p(i)*( k_J(i)*u(i) - k_p(i)*u_p(i) )  + k_J(i)/k_p(i)*help )
+               * ( 3.d10/k_p(i)* ( k_J(i)*u(i) - k_p(i)*u_p(i) ) + k_J(i)/k_p(i)*help )
 
-      dT_sm(i) = dT(i)*0.4
+      dT_sm(i) = dT(i)*0.4!0.4
       dT_sm(i) = dT_sm(i)/abs(dT_sm(i)) * min( abs(dT_sm(i)),mas_tau_TkeV(i,2)/10 )
       i = i+1
     end do
@@ -227,14 +231,14 @@ real(8) :: weights(0:2)
 
     ! --- Print atmospheric structure for the current iteration ---
     write(*,*) '# atmosphere structure, iter =', i_iter
-    write(*,*) '# i, m, T_keV, rho, dT, dFdm, F, F_target'
+    write(*,*) '# i, m, rho, T_keV, dT, F, F_target, J_tot(1:2)'
 
     i = 2
     do while (i .le. n_m)
       !write(*,*)dT(i), k_J(i)*u(i) , k_p(i)*u_p(i), k_p(i),u_p(i),u(i)
-      write(*,'(I5,1X,3F10.4,1X,ES12.4,1X,F10.4,1X,F12.4,1X,F12.4)') &
-            i, mas_tau_TkeV(i,1), mas_tau_TkeV(i,2), mas_m_rho(i,2), &
-            dT_sm(i), gradF(i), flux(i), F_target
+      write(*,'(I5,1X,3F10.4,1X,ES12.4,1X,F10.4,1X,F12.4,1X,F12.4,1X,F12.4,1X,F12.4)') &
+            i, mas_tau_TkeV(i,1), mas_m_rho(i,2), mas_tau_TkeV(i,2),  &
+            dT_sm(i), flux(i), F_target, J_tot(i,1:2)
       i = i + 1
     end do
 
