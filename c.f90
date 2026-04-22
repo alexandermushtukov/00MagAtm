@@ -187,20 +187,7 @@ real*8:: eps_surf,eps_Flog,eps_Fmax
     end do
     gradF(1) = gradF(2)
 
-!=== metrics of success ==!
-eps_surf = abs(F_target - Fz(1))/F_target
-eps_Fmax = 0.d0
-eps_Flog = 0.d0; help = 0.d0
-i=2
-do while(i.le.n_m)
-  eps_Fmax = max( eps_Fmax, abs(F_target - Fz(1))/F_target )
-  eps_Flog = eps_Flog + log( mas_tau_TkeV(i,1) - mas_tau_TkeV(i-1,1) ) * ( (F_target - Fz(1))/F_target )**2
-  help = help + log( mas_tau_TkeV(i,1) - mas_tau_TkeV(i-1,1) )
-  i = i+1
-end do
-eps_Flog = sqrt(eps_Flog/help)
-!==============================================================!
-
+    call get_accur_metrics(eps_surf,eps_Fmax,eps_Flog,F_target,Fz,mas_tau_TkeV,n_m)
     call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m)
     dT_sm(1:n_m) = dT(1:n_m)
 
