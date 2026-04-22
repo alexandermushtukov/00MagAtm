@@ -72,14 +72,14 @@ real(8) :: weights(0:2)
   n_m   = 50
   n_mu  = 12
   n_fi  = 1
-  n_E   = 40
-  E_min = 1.0d0
+  n_E   = 35
+  E_min = 0.2d0
   E_max = 10.d0
   !============================!
 
   write(*,*) "# n_m=", n_m
 
-  kappa_T = 0.4d0 !0.34d0
+  kappa_T = 0.4d0
   tau_min = m_min*kappa_T
   tau_max = m_max*kappa_T
 
@@ -219,12 +219,18 @@ real(8) :: weights(0:2)
         j = j+1
       end do
       !== end integration ==!
-      help = help + 2*( BB_Flux24(T_eff)*100 - Fz(1) )
+      help = help + 2.d0 * ( F_target - Fz(1) )
       dT(i) = mas_tau_TkeV(i,2)/ 16 / ( BB_Flux24(mas_tau_TkeV(i,2))*100 ) &
                * ( 3.d10/k_p(i)* ( k_J(i)*u(i) - k_p(i)*u_p(i) ) + k_J(i)/k_p(i)*help )
-
-      dT_sm(i) = dT(i)*0.4!0.4
-      dT_sm(i) = dT_sm(i)/abs(dT_sm(i)) * min( abs(dT_sm(i)),mas_tau_TkeV(i,2)/10 )
+      dT_sm(i) = dT(i)*0.05d0 !0.2
+      dT_sm(i) = sign(1.d0,dT_sm(i)) * min( abs(dT_sm(i)), mas_tau_TkeV(i,2)/10 )
+      if (i .eq. n_m) then
+        dT_sm(i) = 0.2d0*dT_sm(i)
+      else if (i .eq. n_m-1) then
+        dT_sm(i) = 0.2d0*dT_sm(i)
+      else if (i .eq. n_m-2) then
+        dT_sm(i) = 0.4d0*dT_sm(i)
+      end if
       i = i+1
     end do
     !===================================!
@@ -511,59 +517,3 @@ real(8) :: tsum, wsum
 
 return
 end subroutine smooth_array
-
-
-!======================================================================================================================
-!======================================================================================================================
-subroutine temperature_correction_2(mas_tau_TkeV_new,T_bot_new,n_m,flux_tot,mas_tau_TkeV,T_bot,F_target,alpha,T_floor)
-implicit none
-real*8,intent(out)::mas_tau_TkeV_new(n_m,2),T_bot_new
-integer,intent(in)::n_m
-real*8,intent(in)::flux_tot(n_m,2),mas_tau_TkeV(n_m,2),T_bot,alpha,F_target,T_floor
-integer::i
-real*8::flux(n_m),T_old,T_corr,dT(n_m),dT_(n_m),dflux
-
-  mas_tau_TkeV_new(1:n_m,1:2) = mas_tau_TkeV(1:n_m,1:2)
-
-  i = 1
-  do while(i.le.n_m)
-    flux(i) = flux_tot(i,1) + flux_tot(i,2)
-    i = i+1
-  end do
-
-  i = 2
-  do while(i.le.n_m)
-    dflux = flux(i) - flux(i-1)
-    if( dflux.gt.0.d0 )then
-      ! == heating ==
-      dT(i) = 0.05d0
-    else
-      ! == cooling ==
-      dT(i) = -0.05d0
-    end if
-    i = i + 1
-  end do
-
-  dT_(2)=dT(2)
-  i=3
-  do while(i.le.n_m-1)
-    dT_(i) = (dT(i) + 0.25d0*dT(i-1) + 0.25d0*dT(i+1))/1.5d0
-    i = i+1
-  end do
-  dT_(n_m)=dT(n_m)
-
-  i=2
-  do while(i.le.n_m)
-    mas_tau_TkeV_new(i,2) = mas_tau_TkeV_new(i,2) + dT_(i)
-    i = i+1
-  end do
-
-  ! == Correct bottom temperature ==
-  if( F_target.gt.flux(n_m) )then
-    T_bot_new = T_bot
-  else
-    T_bot_new = T_bot
-  end if
-
-return
-end subroutine temperature_correction_2
