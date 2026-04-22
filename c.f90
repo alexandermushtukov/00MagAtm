@@ -4,7 +4,6 @@ program MagAtm
 use omp_lib
 use black_body
 implicit none
-
 real*8 :: pi=3.141592653589793d0
 real*8 :: E,B12,m_ns,R6,theta_B,Z,A,dot_m_6,ln_Lambda,T_eff
 real*8 :: m_min,m_max,kappa_T,tau_min,tau_max
@@ -13,7 +12,9 @@ real*8 :: g14,E_min,E_max,dE,F_E_target,F_target,T_floor
 real*8, allocatable :: mas_tau_TkeV(:,:), mas_m_rho(:,:), flux_tot(:,:), flux_E(:,:), J_E(:,:), J_tot(:,:), &
                        kabs_mean(:,:),k_p(:),k_J(:),k_f(:),dk_p(:),dk_J(:),dk_f(:),du(:),dFz(:),u(:),u_p(:),Fz(:),&
                        spec(:,:),&
-                       dflux(:), dT(:), dT_sm(:), flux(:), gradF(:), weight_m(:),TkeV_old(:)
+                       dflux(:), dT(:), dT_sm(:), flux(:), gradF(:), weight_m(:),TkeV_old(:), &
+                       flux_E_prev(:,:), J_E_prev(:,:), kabs_mean_prev(:,:), &
+                       dk_p_prev(:), dk_J_prev(:), dk_f_prev(:), du_prev(:), dFz_prev(:)
 integer :: i_iter,jj
 character*100 :: file_sp,file_t
 real*8 :: eps
@@ -26,6 +27,10 @@ real*8 :: flux_surf, dm, gradF_scale
 real*8 :: m_turn, p_weight, wloc
 integer :: iter_max
 real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,eps_Flog_,eps_Fmax_,eps_rough_
+
+! --- variables for trapezoidal integration over energy ---
+real*8 :: E_,E_prev,F_E_target_,F_E_target_prev,dE_
+logical :: first_E
 
   sigma_SB_22_keV = 1.027d2
   eps      = 1.d-2
@@ -77,7 +82,9 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
 
   allocate( mas_tau_TkeV(n_m,2), mas_m_rho(n_m,2), flux_tot(n_m,2), flux_E(n_m,2), J_E(n_m,2), J_tot(n_m,2), &
             kabs_mean(n_m,2),k_p(n_m),k_J(n_m),k_F(n_m),dk_p(n_m),dk_J(n_m),dk_F(n_m),du(n_m),dFz(n_m),u(n_m),u_p(n_m),Fz(n_m), &
-            spec(n_E,3),dflux(n_m), dT(n_m), dT_sm(n_m), flux(n_m), gradF(n_m), weight_m(n_m), TkeV_old(n_m) )
+            spec(n_E,3),dflux(n_m), dT(n_m), dT_sm(n_m), flux(n_m), gradF(n_m), weight_m(n_m), TkeV_old(n_m), &
+            flux_E_prev(n_m,2), J_E_prev(n_m,2), kabs_mean_prev(n_m,2), &
+            dk_p_prev(n_m), dk_J_prev(n_m), dk_f_prev(n_m), du_prev(n_m), dFz_prev(n_m) )
 
   ! === Initial temperature structure ===
   i = 1
@@ -114,34 +121,64 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
     u(1:n_m) = 0.d0
     Fz(1:n_m) = 0.d0
     J_tot(1:n_m,1:2) = 0.d0
+
+    first_E = .true.
     i = 1
     do while (i .le. n_E)
-      E  = E_min * (E_max/E_min)**( dble(i-1) / dble(n_E-1) )
-      F_E_target = pi * BB_Intensity_22(E,T_eff)
-      dE = E * ( (E_max/E_min)**(1.d0/dble(n_E-1)) - 1.d0 )
+      E_  = E_min * (E_max/E_min)**( dble(i-1) / dble(n_E-1) )
+      F_E_target_ = pi * BB_Intensity_22(E_,T_eff)
 
       call pol_RT_fixE(flux_E,J_E,kabs_mean,dk_p,dk_J,dk_f,du,dFz,&
-                       E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda, &
+                       E_,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda, &
                        mas_m_rho,mas_tau_TkeV,T_bot,n_m,n_mu,n_fi)
- 
-      J_tot(1:n_m,1:2) = J_tot(1:n_m,1:2) + J_e(1:n_m,1:2)*dE
- 
-      k_p(1:n_m)  = k_p(1:n_m)  + dk_p(1:n_m)*dE
-      k_J(1:n_m)  = k_J(1:n_m)  + dk_J(1:n_m)*dE
-      k_F(1:n_m)  = k_F(1:n_m)  + dk_F(1:n_m)*dE
 
-      u(1:n_m)  = u(1:n_m)  + du(1:n_m)*dE
-      Fz(1:n_m) = Fz(1:n_m) + dFz(1:n_m)*dE
-
-      spec(i,1) = E
+      spec(i,1) = E_
       spec(i,2) = flux_E(1,1)
       spec(i,3) = flux_E(1,2)
 
-      flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + flux_E(1:n_m,1:2)*dE
+      if( first_E )then
+        flux_E_prev(1:n_m,1:2) = flux_E(1:n_m,1:2)
+        J_E_prev(1:n_m,1:2) = J_E(1:n_m,1:2)
+        kabs_mean_prev(1:n_m,1:2) = kabs_mean(1:n_m,1:2)
+        dk_p_prev(1:n_m) = dk_p(1:n_m)
+        dk_J_prev(1:n_m) = dk_J(1:n_m)
+        dk_f_prev(1:n_m) = dk_f(1:n_m)
+        du_prev(1:n_m) = du(1:n_m)
+        dFz_prev(1:n_m) = dFz(1:n_m)
+        E_prev = E_
+        F_E_target_prev = F_E_target_
+        first_E = .false.
+      else
+        dE_ = E_ - E_prev
 
-      F_target = F_target + F_E_target*dE
+        J_tot(1:n_m,1:2) = J_tot(1:n_m,1:2) + ( J_E_prev(1:n_m,1:2) + J_E(1:n_m,1:2) )/2.d0 * dE_
+
+        k_p(1:n_m) = k_p(1:n_m) + ( dk_p_prev(1:n_m) + dk_p(1:n_m) )/2.d0 * dE_
+        k_J(1:n_m) = k_J(1:n_m) + ( dk_J_prev(1:n_m) + dk_J(1:n_m) )/2.d0 * dE_
+        k_F(1:n_m) = k_F(1:n_m) + ( dk_F_prev(1:n_m) + dk_F(1:n_m) )/2.d0 * dE_
+
+        u(1:n_m)  = u(1:n_m)  + ( du_prev(1:n_m)  + du(1:n_m)  )/2.d0 * dE_
+        Fz(1:n_m) = Fz(1:n_m) + ( dFz_prev(1:n_m) + dFz(1:n_m) )/2.d0 * dE_
+
+        flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + ( flux_E_prev(1:n_m,1:2) + flux_E(1:n_m,1:2) )/2.d0 * dE_
+
+        F_target = F_target + ( F_E_target_prev + F_E_target_ )/2.d0 * dE_
+
+        flux_E_prev(1:n_m,1:2) = flux_E(1:n_m,1:2)
+        J_E_prev(1:n_m,1:2) = J_E(1:n_m,1:2)
+        kabs_mean_prev(1:n_m,1:2) = kabs_mean(1:n_m,1:2)
+        dk_p_prev(1:n_m) = dk_p(1:n_m)
+        dk_J_prev(1:n_m) = dk_J(1:n_m)
+        dk_f_prev(1:n_m) = dk_f(1:n_m)
+        du_prev(1:n_m) = du(1:n_m)
+        dFz_prev(1:n_m) = dFz(1:n_m)
+        E_prev = E_
+        F_E_target_prev = F_E_target_
+      end if
+
       i = i + 1
     end do
+
     i = 1
     do while( i.le.n_m )
       k_p(i) = k_p(i)/ 4/BB_Flux24( mas_tau_TkeV(i,2) )
@@ -242,7 +279,6 @@ real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,e
 
 144 return
 end program MagAtm
-
 
 
 !======================================================================
