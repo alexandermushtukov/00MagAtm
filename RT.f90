@@ -11,7 +11,7 @@ implicit none
 real*8,intent(out)::mas_m_rho(n_m,2)
 real*8,intent(in)::g14,dot_m_6,ln_Lambda,tau_min,tau_max,mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m
-real*8::x_scale,kappa_T = 0.34d0
+real*8::x_scale,kappa_T = 0.4d0
 real*8::F_tau(n_m,2),mas_x_rho_tau(n_m,5),help
 integer::i
   !== get hydrostatical stracure of the atmosphere ==!
@@ -73,7 +73,7 @@ integer::i,k,j,i_max
     flux_tot(1:n_m,1:2) = 0.d0
     J_E(1:n_m,1:2) = 0.d0
     kabs_mean(1:n_m,1:2) = 0.d0
-    call RT_iterrations(I_e,S,E,S_0,T_eff,T_bot,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
+    call RT_iterrations(I_e,S,E,S_0,T_eff,T_bot,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
     !== integration over (4*pi) ==!
     k = 1
     do while(k.le.n_fi)
@@ -169,7 +169,7 @@ real*8::x_scale,kappa_T
 real*8 :: xk,frac
 integer :: k0
 
-  kappa_T = 0.34d0
+  kappa_T = 0.4d0
   E_cyc = 11.4d0*B12    !== cyclotron energy in keV ==!
  
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
@@ -356,12 +356,12 @@ end subroutine set_atm_coefficients
 !   [S] = [kappa*B22] - new source function due to scatterings.
 ! ...
 !==========================================================================================================================
-subroutine RT_iterrations(I_e,S,E,S_0,T_eff,T_bottom,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b)
+subroutine RT_iterrations(I_e,S,E,S_0,T_eff,T_bottom,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,Tbot,Tprev)
 use black_body
 implicit none
 real*8,intent(out)::S(n_m,n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,T_bottom,m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2)
+real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,T_bottom,m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2),Tbot,Tprev
 real*8,intent(in)::m_coord_b(n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
 integer::i,j,k,i1,i2,ii,i_pol,jj,kk
 real*8::pi=3.141592653589793d0
@@ -369,6 +369,7 @@ real*8::dmu,dfi,mu,dSigma,tau,dtau,tau_lim,kappa
 real*8::kappa_T = 0.4d0, kappa_help
 real*8::RR(2,2),frac
 integer::q1,q2,qq1,qq2
+real*8 :: Bbot, Bprev, dBdm, dBdTauNu, Ibot, dm_bot
 
   tau_lim = 5.d4   !== the maximal optical distance b/w points ==!
   dmu = 2.d0/n_mu
@@ -396,12 +397,10 @@ integer::q1,q2,qq1,qq2
               dtau = dSigma * kappa / abs(mu)
               if( dtau.ne.0.d0 )then
                 if( ii.ne.(i+1) )then
-                  !I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
                   I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) ) * exp(-tau)
                 else
                   !== we are at the layer boundary ==!
-                  !I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau
-                  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) )/dtau
+                  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) )
                 end if
               end if
               !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
@@ -409,9 +408,23 @@ integer::q1,q2,qq1,qq2
               ii = ii+1
             end do
             !!== add intensity from the lower boundary ==!
+            !if( ii.ge.n_m )then
+            !  !== we still see the bottom of the atmosphere ==!
+            !  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + BB_Intensity_22(E,T_bottom)/2 * exp(-tau)
+            !end if
             if( ii.ge.n_m )then
-              !== we still see the bottom of the atmosphere ==!
-              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + BB_Intensity_22(E,T_bottom)/2 * exp(-tau)
+              ! --- Diffusion-type lower boundary condition, analogous to eq. (2.10) ---
+              Bbot  = BB_Intensity_22(E, Tbot)
+              Bprev = BB_Intensity_22(E, Tprev)
+              dm_bot = max( mas_m_rho(n_m,1) - mas_m_rho(n_m-1,1), 1.d-30 )
+              dBdm = (Bbot - Bprev) / dm_bot
+              kappa = m_atm_kappa(n_m,j,k,1,i_pol) + m_atm_kappa(n_m,j,k,2,i_pol)
+              kappa = max(kappa, 1.d-30)
+              dBdTauNu = dBdm / kappa
+              Ibot = 0.5d0 * ( Bbot + mu * dBdTauNu )
+              ! optional positivity safeguard
+              Ibot = max(0.d0, Ibot)
+              I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + Ibot * exp(-tau)
             end if
           else
             !== downward propagation: accounting for upper layers ==!
@@ -426,12 +439,10 @@ integer::q1,q2,qq1,qq2
               dtau = dSigma * kappa / abs(mu)
               if( dtau.ne.0.d0 )then
                 if( ii.ne.i )then
-                  !I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau * exp(-tau)
                   I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) ) * exp(-tau)
                 else
                   !== we are at the boundary of a layer ==!
-                  !I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol) * dSigma /abs(mu) * ( 1.d0 - exp(-dtau) )/dtau
-                  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) )/dtau
+                  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + S_0(ii,j,k,i_pol)/kappa * ( 1.d0 - exp(-dtau) )
                 end if
               end if
               !== check coefficient: ( 1.d0 - exp(-dtau) )/dtau it should be fraction of radiation that is created in a layer and leave it ==!
@@ -650,7 +661,7 @@ external :: find_H_ordered_inc
     end if
 
     ! evolve optical depth and x
-    tau2 = tau2 + 0.34d0 * rho2 * dx
+    tau2 = tau2 + 0.4d0 * rho2 * dx
     x    = x + dx
 
     ! write any crossed targets (may cross several in one dx step)
