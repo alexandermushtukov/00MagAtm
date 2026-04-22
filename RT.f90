@@ -73,7 +73,7 @@ integer::i,k,j,i_max
     flux_tot(1:n_m,1:2) = 0.d0
     J_E(1:n_m,1:2) = 0.d0
     kabs_mean(1:n_m,1:2) = 0.d0
-    call RT_iterrations(I_e,S,E,S_0,T_eff,T_bot,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
+    call RT_iterrations(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
     !== integration over (4*pi) ==!
     k = 1
     do while(k.le.n_fi)
@@ -356,12 +356,12 @@ end subroutine set_atm_coefficients
 !   [S] = [kappa*B22] - new source function due to scatterings.
 ! ...
 !==========================================================================================================================
-subroutine RT_iterrations(I_e,S,E,S_0,T_eff,T_bottom,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,Tbot,Tprev)
+subroutine RT_iterrations(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,Tbot,Tprev)
 use black_body
 implicit none
 real*8,intent(out)::S(n_m,n_mu,n_fi,2),I_e(n_m,n_mu,n_fi,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,T_bottom,m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2),Tbot,Tprev
+real*8,intent(in)::E,S_0(n_m,n_mu,n_fi,2),T_eff,m_atm_kappa(n_m,n_mu,n_fi,2,2),mas_m_rho(n_m,2),Tbot,Tprev
 real*8,intent(in)::m_coord_b(n_mu,n_fi,2),R_b(n_m,n_mu,n_mu,n_fi,2,2)
 integer::i,j,k,i1,i2,ii,i_pol,jj,kk
 real*8::pi=3.141592653589793d0
@@ -408,10 +408,6 @@ real*8 :: Bbot, Bprev, dBdm, dBdTauNu, Ibot, dm_bot
               ii = ii+1
             end do
             !!== add intensity from the lower boundary ==!
-            !if( ii.ge.n_m )then
-            !  !== we still see the bottom of the atmosphere ==!
-            !  I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + BB_Intensity_22(E,T_bottom)/2 * exp(-tau)
-            !end if
             if( ii.ge.n_m )then
               ! --- Diffusion-type lower boundary condition, analogous to eq. (2.10) ---
               Bbot  = BB_Intensity_22(E, Tbot)
