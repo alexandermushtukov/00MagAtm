@@ -49,11 +49,17 @@ real*8,intent(out)::flux_tot(n_m,2),J_E(n_m,2),kabs_mean(n_m,2),dk_p(n_m),dk_J(n
 real*8::pi=3.141592653589793d0
 real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2),T_bot
 integer,intent(in)::n_m,n_mu,n_fi
-real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
+real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),S_0_new(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
 real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),m_coord_b(n_mu,n_fi,2)
 real*8::dmu,dfi,mu,theta,R_b(n_m,n_mu,n_mu,n_fi,2,2),I_e(n_m,n_mu,n_fi,2)
 integer::i,k,j,i_max
+real*8::eps_S,tol_S,small,help
+
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
+  small = 1.d-30
+  tol_S = 1.d-3
+  i_max = 30   !== maximal number of interractions ==!
+
   !====================================================================================!
   ! get S_therm - source function due to thermal emission [kappa*B_22]
   !     R_b - redistrubution function [1/ster]
@@ -66,34 +72,42 @@ integer::i,k,j,i_max
   S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)    !== [kappa*B_22] : the 1st assumption about source function ==!
 
   !== iterrations of radiative transfer: start ==!
-  i_max = 30   !== number of interraction ==!
   i=1
   do while(i.le.i_max)
     I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
     flux_tot(1:n_m,1:2) = 0.d0
     J_E(1:n_m,1:2) = 0.d0
     kabs_mean(1:n_m,1:2) = 0.d0
+
     call RT_iterrations_v2(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
+
     !== integration over (4*pi) ==!
     k = 1
     do while(k.le.n_fi)
-     j = 1
+      j = 1
       do while(j.le.n_mu)
         mu = -1.d0 + dmu/2 + (j-1)*dmu; theta = acos(mu)
-        flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + I_e(1:n_m,j,k,1:2)*mu * dmu*dfi  !sin(theta)
-        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + I_e(1:n_m,j,k,1:2) * dmu*dfi               !== [B22] ==!
+        flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + I_e(1:n_m,j,k,1:2)*mu * dmu*dfi
+        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + I_e(1:n_m,j,k,1:2) * dmu*dfi
         kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) + m_atm_kappa(1:n_m,j,k,1,1:2) * dmu*dfi
-        !write(*,*)"a:  ",I_e(42,j,k,1:2)*mu * dmu*dfi
         j = j+1
       end do
       k = k+1
     end do
     J_E(1:n_m,1:2) = J_E(1:n_m,1:2) / (4*pi)
     kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) / (4*pi)
-    !write(*,*)"#b: ",i,i_max,flux_tot(45,1:2)," !!! ",J_E(45,1:2),kabs_mean(45,1:2),E  !,mas_m_rho(5,2),E
-    !read(*,*)
-    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2) + S(1:n_m,1:n_mu,1:n_fi,1:2)  !== updated assumtion abut source function ==!
+
+    !== get new source function and check convergence ==!
+    S_0_new(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2) + S(1:n_m,1:n_mu,1:n_fi,1:2)
+
+    eps_S = 0.d0
+    help = maxval( abs( S_0_new(1:n_m,1:n_mu,1:n_fi,1:2) - S_0(1:n_m,1:n_mu,1:n_fi,1:2) ) / &
+                   max( abs(S_0_new(1:n_m,1:n_mu,1:n_fi,1:2)), small ) )
+    eps_S = help
+
+    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_0_new(1:n_m,1:n_mu,1:n_fi,1:2)
     I_out_tot(1:n_mu,1:n_fi,1:2) = I_out(1:n_mu,1:n_fi,1:2)
+    if( eps_S.lt.tol_S )exit
     i = i+1
   end do
   !== iterrations of radiative transfer: end ==!
@@ -111,8 +125,6 @@ integer::i,k,j,i_max
       do while( k.le.n_fi )
         dk_p(i) = dk_p(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1) + m_atm_kappa(i,j,k,1,2) ) * BB_Intensity_22(E,mas_tau_TkeV(i,2))
         dk_J(i) = dk_J(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1)*I_e(i,j,k,1) + m_atm_kappa(i,j,k,1,2)*I_e(i,j,k,2) )
-        !dk_f(i) = dk_f(i) + dmu*dfi* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
-        !                             + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
         dk_f(i) = dk_f(i) + dmu*dfi/mu/2*sign(1.d0,mu)* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
                                                           + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
         du(i)  = du(i) + dmu*dfi*( I_e(i,j,k,1) + I_e(i,j,k,2) )
@@ -128,7 +140,7 @@ integer::i,k,j,i_max
   !== printing ==!
   k = 1
   do while(k.le.n_fi)
-   j = 1
+    j = 1
     do while(j.le.n_mu)
       !write(*,*)k*dfi,j*dmu,I_out(j,k,1:2)
       j = j+1
@@ -138,7 +150,6 @@ integer::i,k,j,i_max
   end do
 return
 end subroutine pol_RT_fixE
-
 
 
 !==============================================================================================================================
