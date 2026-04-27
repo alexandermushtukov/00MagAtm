@@ -42,12 +42,12 @@ end subroutine get_hydro_atm_structure
 !=======================================================================================================
 subroutine pol_RT_fixE(flux_tot,J_E,kabs_mean,dk_p,dk_J,dk_f,du,dFz,&
                        E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,&
-                       T_bot,n_m,n_mu,n_fi)
+                       n_m,n_mu,n_fi)
 use black_body
 implicit none
 real*8,intent(out)::flux_tot(n_m,2),J_E(n_m,2),kabs_mean(n_m,2),dk_p(n_m),dk_J(n_m),dk_f(n_m),du(n_m),dFz(n_m)
 real*8::pi=3.141592653589793d0
-real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2),T_bot
+real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
 real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),S_0_new(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
 real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),m_coord_b(n_mu,n_fi,2)
@@ -137,7 +137,7 @@ real*8::eps_S,tol_S,small,help
   end do
   !===================================!
 
-  !== printing ==!
+  !== printing if needed ==!
   k = 1
   do while(k.le.n_fi)
     j = 1

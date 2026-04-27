@@ -54,10 +54,11 @@ implicit none
 real*8,intent(out)::dT(n_m)
 real*8,intent(in)::F_target,Fz(n_m),mas_tau_TkeV(n_m,2),k_F(n_m),k_J(n_m),k_p(n_m),u(n_m),u_p(n_m)
 integer,intent(in)::n_m
-real*8::help(n_m),f_int(n_m),dm
+real*8::help(n_m),f_int(n_m),dm,damp_fact
 integer::i
 real*8::kappa_T=0.4d0
 
+  damp_fact = 0.1d0
   !== integrand for the non-local term ==!
   i = 1
   do while( i.le.n_m )
@@ -87,10 +88,13 @@ real*8::kappa_T=0.4d0
     dT(i) = mas_tau_TkeV(i,2)/16.d0/( BB_Flux24(mas_tau_TkeV(i,2))*100.d0 ) &
             * ( 3.d10/k_p(i) * ( k_J(i)*u(i) - k_p(i)*u_p(i) ) &
             + k_J(i)/k_p(i) * ( help(i) + 2.d0*( F_target - Fz(1) ) ) )
-    dT(i) = dT(i)*0.2d0
-    dT(i) = sign(1.d0,dT(i)) * min( abs(dT(i)), mas_tau_TkeV(i,2)/10.d0 )
+    dT(i) = dT(i)*damp_fact
+    dT(i) = sign(1.d0,dT(i)) * min( abs(dT(i)), 0.03d0 * mas_tau_TkeV(i,2) )
     i = i+1
   end do
+  !i = n_m
+  !write(*,*)"#check: ",dT(n_m), 3.d10/k_p(i) * ( k_J(i)*u(i) - k_p(i)*u_p(i) ) ,&
+  !         k_J(i)/k_p(i) * ( help(i) ), k_J(i)/k_p(i) * (2.d0*( F_target - Fz(1) ) )
 return
 end subroutine temperature_correction
 
