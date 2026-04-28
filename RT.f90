@@ -52,7 +52,7 @@ integer,intent(in)::n_m,n_mu,n_fi
 real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),S_0_new(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
 real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),m_coord_b(n_mu,n_fi,2)
 real*8::dmu,dfi,mu,theta,R_b(n_m,n_mu,n_mu,n_fi,2,2),I_e(n_m,n_mu,n_fi,2)
-integer::i,k,j,i_max
+integer::i,k,j,i_max,j_,k_
 real*8::eps_S,tol_S,small,help
 
   dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
@@ -123,12 +123,23 @@ real*8::eps_S,tol_S,small,help
       mu = -1.d0 + dmu/2 + (j-1)*dmu
       k = 1
       do while( k.le.n_fi )
-        dk_p(i) = dk_p(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1) + m_atm_kappa(i,j,k,1,2) ) * BB_Intensity_22(E,mas_tau_TkeV(i,2))
+        dk_p(i) = dk_p(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1) + m_atm_kappa(i,j,k,1,2) ) * BB_Intensity_22(E,mas_tau_TkeV(i,2))/2
         dk_J(i) = dk_J(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1)*I_e(i,j,k,1) + m_atm_kappa(i,j,k,1,2)*I_e(i,j,k,2) )
-        dk_f(i) = dk_f(i) + dmu*dfi/mu/2*sign(1.d0,mu)* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
-                                                          + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
+        !dk_f(i) = dk_f(i) + dmu*dfi/mu/2*sign(1.d0,mu)* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
+        !                                                  + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
+        !dk_f(i) = dk_f(i) + dmu*dfi/mu/2* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
+        !                                                   + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
+        if( mu.gt.0.d0 )then
+          j_ = n_mu + 1 - j
+          k_ = k + n_fi/2; k_ = mod(k_ - 1, n_fi) + 1
+          dk_f(i) = dk_f(i) + dmu*dfi/mu/2* &
+                   ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
+                      + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) &
+                      - (m_atm_kappa(i,j_,k_,1,1)+m_atm_kappa(i,j_,k_,2,1))*I_e(i,j_,k_,1) &
+                      - (m_atm_kappa(i,j_,k_,1,2)+m_atm_kappa(i,j_,k_,2,2))*I_e(i,j_,k_,2) )
+        end if
         du(i)  = du(i) + dmu*dfi*( I_e(i,j,k,1) + I_e(i,j,k,2) )
-        dFz(i) = dFz(i) + dmu*dfi* mu*( I_e(i,j,k,1) + I_e(i,j,k,2) )
+        dFz(i) = dFz(i) + dmu*dfi* mu*( I_e(i,j,k,1) + I_e(i,j,k,2) )    !== flux in [erg/cm^2] ==!
         k = k+1
       end do
       j = j+1
@@ -417,7 +428,7 @@ real*8 :: Bbot, Bprev, dBdm, dBdTauNu, Ibot, dm_bot
             end do
             !!== add intensity from the lower boundary ==!
             if( ii.ge.n_m )then
-              ! --- Diffusion-type lower boundary condition, analogous to eq. (2.10) ---
+              !=== Diffusion-type lower boundary condition, analogous to eq. (2.10) ===!
               Bbot  = BB_Intensity_22(E, Tbot)
               Bprev = BB_Intensity_22(E, Tprev)
               dm_bot = max( mas_m_rho(n_m,1) - mas_m_rho(n_m-1,1), 1.d-30 )
@@ -426,7 +437,7 @@ real*8 :: Bbot, Bprev, dBdm, dBdTauNu, Ibot, dm_bot
               kappa = max(kappa, 1.d-30)
               dBdTauNu = dBdm / kappa
               Ibot = 0.5d0 * ( Bbot + mu * dBdTauNu )
-              ! optional positivity safeguard
+              !== optional positivity safeguard ==!
               Ibot = max(0.d0, Ibot)
               I_e(i,j,k,i_pol) = I_e(i,j,k,i_pol) + Ibot * exp(-tau)
             end if
