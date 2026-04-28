@@ -26,12 +26,14 @@ real*8 :: max_rel_flux_err, max_rel_dT, rel_flux_err
 real*8 :: flux_surf, dm, gradF_scale
 real*8 :: m_turn, p_weight, wloc
 integer :: iter_max
-real*8:: delta_surf,eps_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_surf_,eps_Flog_,eps_Fmax_,eps_rough_
+real*8:: delta_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_Flog_,eps_Fmax_,eps_rough_
 
 ! --- variables for trapezoidal integration over energy ---
 real*8 :: E_,E_prev,F_E_target_,F_E_target_prev,dE_
 real*8 :: weights(0:2)
 logical :: first_E
+real*8 :: delta_Flog
+
 
   sigma_SB_22_keV = 1.027d2
   eps      = 1.d-2
@@ -71,8 +73,8 @@ logical :: first_E
   !=== Numerical parameters ===!
   m_min = 1.d-2
   m_max = 1.d+4
-  n_m   = 50
-  n_mu  = 16 !12
+  n_m   = 40
+  n_mu  = 14 !12
   n_fi  = 1  !8!2
   n_E   = 40
   E_min = 0.1d0
@@ -103,11 +105,10 @@ logical :: first_E
 
   !=== Temperature iterations ===!
   delta_surf_= 1.d3
-  eps_surf_ =  1.d3
   eps_Flog_ =  1.d3
   eps_Fmax_ =  1.d3
   eps_rough_=  1.d3
-  spec_(i,1) = 11.11d0; spec_(i,2) = 11.11d0; spec_(i,3) = 11.11d0
+  spec_(1:n_E,1) = 11.11d0; spec_(1:n_E,2) = 11.11d0; spec_(1:n_E,3) = 11.11d0
 
   i_iter = 0
   do while (i_iter .lt. iter_max)
@@ -186,7 +187,8 @@ logical :: first_E
     i = 1
     do while( i.le.n_m )
       !k_p(i) = k_p(i)/ 4/BB_Flux24( mas_tau_TkeV(i,2) )
-      k_p(i) = k_p(i)/ 4/BB_Flux24_interval(mas_tau_TkeV(i,2),E_min,E_max,n_E)
+      !k_p(i) = k_p(i)/ 4/BB_Flux24_interval(mas_tau_TkeV(i,2),E_min,E_max,n_E)
+      k_p(i) = k_p(i)/ (4* 100 * BB_Flux24_interval(mas_tau_TkeV(i,2),E_min,E_max,n_E) )
       k_J(i) = k_J(i)/u(i)
       k_F(i) = k_F(i)*2/Fz(i)
       u_p(i) = 1.333333d-8 * BB_Flux24_interval( mas_tau_TkeV(i,2), E_min, E_max, n_E )
@@ -217,13 +219,21 @@ logical :: first_E
     end do
     gradF(1) = gradF(2)
 
-    call get_accur_metrics(delta_surf,eps_surf,eps_Fmax,eps_Flog,eps_rough,F_target,Fz,mas_tau_TkeV,n_m)
+    call get_accur_metrics(delta_surf, eps_Fmax, delta_Flog, eps_Flog, &
+                       eps_rough, F_target, Fz, mas_tau_TkeV, n_m)
     !if( abs(eps_Flog).lt.abs(1.5*eps_Flog_) )then
       !== new temperature profile is not that bad ==!
       TkeV_old(1:n_m) = mas_tau_TkeV(1:n_m,2)
-      call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m)
+      call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m,E_min,E_max,n_E)
       !dT_sm(1:n_m) = dT(1:n_m)
       call smooth_array(dT_sm, dT, n_m, 2, weights)   !== smoth new temperature correction ==!
+do i = 1, n_m
+  wloc = 1.d0
+  if (i > n_m-6) wloc = 0.25d0
+  dT_sm(i) = sign(1.d0,dT_sm(i)) * &
+             min(abs(dT_sm(i)), wloc*0.01d0*mas_tau_TkeV(i,2))
+end do
+
       eps_Flog_ =    eps_Flog
       spec_(1:n_E,1:3) = spec(1:n_E,1:3)
     !else
@@ -244,7 +254,7 @@ logical :: first_E
             dT_sm(i), flux(i), F_target, flux_tot(i,1:2)
       i = i + 1
     end do
-    write(*,*)"# ", eps_surf, eps_Flog, eps_Fmax, eps_rough
+    write(*,*)"# ", delta_surf, eps_Flog, eps_Fmax, eps_rough
 
     !=== Update the temperature profile ===!
     i = 1
