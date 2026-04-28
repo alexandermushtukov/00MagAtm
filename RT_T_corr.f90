@@ -48,17 +48,18 @@ end subroutine get_accur_metrics
 
 !==================================================================================
 !==================================================================================
-subroutine temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m)
+subroutine temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m,E_min,E_max,n_E)
 use black_body
 implicit none
 real*8,intent(out)::dT(n_m)
-real*8,intent(in)::F_target,Fz(n_m),mas_tau_TkeV(n_m,2),k_F(n_m),k_J(n_m),k_p(n_m),u(n_m),u_p(n_m)
-integer,intent(in)::n_m
-real*8::help(n_m),f_int(n_m),dm,damp_fact
+real*8,intent(in)::F_target,Fz(n_m),mas_tau_TkeV(n_m,2),k_F(n_m),k_J(n_m),k_p(n_m),u(n_m),u_p(n_m),E_min,E_max
+integer,intent(in)::n_m,n_E
+real*8::help(n_m),f_int(n_m),dm,damp_fact,damp_fact_2
 integer::i
 real*8::kappa_T=0.4d0
 
-  damp_fact = 0.1d0
+  damp_fact   = 0.3d0
+  damp_fact_2 = 0.05d0
   !== integrand for the non-local term ==!
   i = 1
   do while( i.le.n_m )
@@ -71,25 +72,24 @@ real*8::kappa_T=0.4d0
   i = 2
   do while( i.le.n_m )
     dm = mas_tau_TkeV(i-1,1) - mas_tau_TkeV(max(1,i-2),1)
-
     if( i.eq.2 )then
       help(i) = ( mas_tau_TkeV(1,1) - 0.d0 ) * f_int(1)
     else
       help(i) = help(i-1) + ( mas_tau_TkeV(i-1,1) - mas_tau_TkeV(i-2,1) ) &
                             * ( f_int(i-1) + f_int(i-2) ) / 2.d0
     end if
-
     i = i+1
   end do
 
   !== temperature correction ==!
   i = 1
   do while( i.le.n_m )
-    dT(i) = mas_tau_TkeV(i,2)/16.d0/( BB_Flux24(mas_tau_TkeV(i,2))*100.d0 ) &
+    dT(i) = mas_tau_TkeV(i,2)/16.d0/( BB_Flux24_interval(mas_tau_TkeV(i,2),E_min,E_max,n_E) *100.d0 ) &
             * ( 3.d10/k_p(i) * ( k_J(i)*u(i) - k_p(i)*u_p(i) ) &
             + k_J(i)/k_p(i) * ( help(i) + 2.d0*( F_target - Fz(1) ) ) )
     dT(i) = dT(i)*damp_fact
-    dT(i) = sign(1.d0,dT(i)) * min( abs(dT(i)), 0.03d0 * mas_tau_TkeV(i,2) )
+    dT(i) = sign(1.d0,dT(i)) * min( abs(dT(i)), damp_fact_2 * mas_tau_TkeV(i,2) )
+    !if (i > n_m-5) dT(i) = 0.7d0*dT(i)
     i = i+1
   end do
   !i = n_m
