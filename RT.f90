@@ -79,7 +79,8 @@ real*8::eps_S,tol_S,small,help
     J_E(1:n_m,1:2) = 0.d0
     kabs_mean(1:n_m,1:2) = 0.d0
 
-    call RT_iterrations_v2(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
+    call RT_iterrations_v2(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,&
+                           mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
 
     !== integration over (4*pi) ==!
     k = 1
@@ -123,7 +124,7 @@ real*8::eps_S,tol_S,small,help
       mu = -1.d0 + dmu/2 + (j-1)*dmu
       k = 1
       do while( k.le.n_fi )
-        dk_p(i) = dk_p(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1) + m_atm_kappa(i,j,k,1,2) ) * BB_Intensity_22(E,mas_tau_TkeV(i,2))/2
+        dk_p(i) = dk_p(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1) + m_atm_kappa(i,j,k,1,2) ) * BB_Intensity_22(E,mas_tau_TkeV(i,2))!/2
         dk_J(i) = dk_J(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1)*I_e(i,j,k,1) + m_atm_kappa(i,j,k,1,2)*I_e(i,j,k,2) )
         !dk_f(i) = dk_f(i) + dmu*dfi/mu/2*sign(1.d0,mu)* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
         !                                                  + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
@@ -606,18 +607,20 @@ real*8 :: map_frac(n_mu,n_mu,n_fi,n_fi)
             ii = ii+1
           end do
 
-          ! --- Diffusion-type lower boundary condition, analogous to eq. (2.10) ---
-          Bbot  = BB_Intensity_22(E, Tbot)
-          Bprev = BB_Intensity_22(E, Tprev)
+          !== Diffusion-type lower boundary condition, analogous to (2.10) ==!
+          Bbot  = 0.5d0 * BB_Intensity_22(E, Tbot)
+          Bprev = 0.5d0 * BB_Intensity_22(E, Tprev)
           dm_bot = max( mas_m_rho(n_m,1) - mas_m_rho(n_m-1,1), 1.d-30 )
           dBdm = (Bbot - Bprev) / dm_bot
 
-          kappa = m_atm_kappa(n_m,j,k,1,i_pol) + m_atm_kappa(n_m,j,k,2,i_pol)
+          !kappa = m_atm_kappa(n_m,j,k,1,i_pol) + m_atm_kappa(n_m,j,k,2,i_pol)   !== check ==!
+          kappa = 0.5d0 * (m_atm_kappa(n_m,j,k,1,i_pol)   + m_atm_kappa(n_m,j,k,2,i_pol) &
+                         + m_atm_kappa(n_m-1,j,k,1,i_pol) + m_atm_kappa(n_m-1,j,k,2,i_pol) )
           kappa = max(kappa, 1.d-30)
           dBdTauNu = dBdm / kappa
 
-          Ibot = 0.5d0 * ( Bbot + mu * dBdTauNu )
-          Ibot = max(0.d0, Ibot)
+          Ibot =  Bbot + mu * dBdTauNu
+          !Ibot = max(0.d0, Ibot)   !== check: I can be negative ==!
 
           I_up(n_m) = Ibot
           i = n_m-1
