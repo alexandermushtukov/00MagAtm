@@ -53,7 +53,7 @@ real*8 :: delta_Flog
   200 format (100(es11.4,"   ") )
 
   ! === Physical parameters ===
-  T_eff     = 2.d0
+  T_eff     = 0.6d0 !2.d0
   m_ns      = 1.4d0
   R6        = 1.d0
   B12       = 1.d2
@@ -72,16 +72,18 @@ real*8 :: delta_Flog
 
   !=== Numerical parameters ===!
   m_min = 1.d-2
-  m_max = 1.d+4
+  m_max = 1.d+4  !1.d+4
   n_m   = 40
-  n_mu  = 14 !12
-  n_fi  = 1  !8!2
-  n_E   = 40
-  E_min = 0.1d0
-  E_max = 10.d0
+  n_mu  = 16 !14 !12
+  n_fi  = 4  !8!2
+  n_E   = 80
+  E_min = 0.01d0
+  E_max = 20.d0
   !============================!
 
-  write(*,*) "# n_m=", n_m
+  write(*,*) "# B12=",B12,"  theta_B=",theta_B
+  write(*,*) "# n_m=",n_m,"  n_mu=",n_mu,"  n_fi=",n_fi
+  write(*,*) "# n_E=",n_E,"  E_min=",E_min,"  E_max=",E_max
 
   kappa_T = 0.4d0
   tau_min = m_min*kappa_T
@@ -224,16 +226,15 @@ real*8 :: delta_Flog
     !if( abs(eps_Flog).lt.abs(1.5*eps_Flog_) )then
       !== new temperature profile is not that bad ==!
       TkeV_old(1:n_m) = mas_tau_TkeV(1:n_m,2)
-      call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m,E_min,E_max,n_E)
+      call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m,E_min,E_max,n_E,delta_surf)
       !dT_sm(1:n_m) = dT(1:n_m)
       call smooth_array(dT_sm, dT, n_m, 2, weights)   !== smoth new temperature correction ==!
-do i = 1, n_m
-  wloc = 1.d0
-  if (i > n_m-6) wloc = 0.25d0
-  dT_sm(i) = sign(1.d0,dT_sm(i)) * &
-             min(abs(dT_sm(i)), wloc*0.01d0*mas_tau_TkeV(i,2))
-end do
-
+      do i = 1, n_m
+        wloc = 1.d0
+        if (i > n_m-6) wloc = 1.d0 - 0.25d0 * ( i-n_m+6 )/6
+          dT_sm(i) = sign(1.d0,dT_sm(i)) * &
+                     min(abs(dT_sm(i)), wloc*0.05d0*mas_tau_TkeV(i,2))
+        end do
       eps_Flog_ =    eps_Flog
       spec_(1:n_E,1:3) = spec(1:n_E,1:3)
     !else
@@ -254,6 +255,7 @@ end do
             dT_sm(i), flux(i), F_target, flux_tot(i,1:2)
       i = i + 1
     end do
+    write(*,*)"# :  delta_surf, eps_Flog, eps_Fmax, eps_rough"
     write(*,*)"# ", delta_surf, eps_Flog, eps_Fmax, eps_rough
 
     !=== Update the temperature profile ===!
@@ -263,26 +265,24 @@ end do
       i = i + 1
     end do
 
+    open(unit = 25, file = file_sp, status = 'old', form='formatted')
+    i = 1
+    do while (i .le. n_E)
+      write(25,*) spec_(i,1:3)
+      i = i + 1
+    end do
+    close(25)
+
+    open(unit = 26, file = file_t, status = 'old', form='formatted')
+    i = 1
+    do while (i .le. n_m)
+      write(26,*) mas_tau_TkeV(i,1),TkeV_old(i)!, flux(i), F_target
+      i = i + 1
+    end do
+    close(26)
+
     i_iter = i_iter + 1
   end do
-
-  write(*,*) "# iteration ended, n_iter =", i_iter
-
-  open(unit = 25, file = file_sp, status = 'old', form='formatted')
-  i = 1
-  do while (i .le. n_E)
-    write(25,*) spec_(i,1:3)
-    i = i + 1
-  end do
-  close(25); write(*,*) "# end0"
-
-  open(unit = 26, file = file_t, status = 'old', form='formatted')
-  i = 1
-  do while (i .le. n_m)
-    write(26,*) mas_tau_TkeV(i,1),TkeV_old(i)!, flux(i), F_target
-    i = i + 1
-  end do
-  close(26); write(*,*) "# end1"
 
 144 return
 end program MagAtm
