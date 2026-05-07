@@ -48,18 +48,29 @@ end subroutine get_accur_metrics
 
 !==================================================================================
 !==================================================================================
-subroutine temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m,E_min,E_max,n_E)
+subroutine temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m,E_min,E_max,n_E,delta_surf)
 use black_body
 implicit none
 real*8,intent(out)::dT(n_m)
-real*8,intent(in)::F_target,Fz(n_m),mas_tau_TkeV(n_m,2),k_F(n_m),k_J(n_m),k_p(n_m),u(n_m),u_p(n_m),E_min,E_max
+real*8,intent(in)::F_target,Fz(n_m),mas_tau_TkeV(n_m,2),k_F(n_m),k_J(n_m),k_p(n_m),u(n_m),u_p(n_m),E_min,E_max,delta_surf
 integer,intent(in)::n_m,n_E
 real*8::help(n_m),f_int(n_m),dm,damp_fact,damp_fact_2
 integer::i
 real*8::kappa_T=0.4d0
 
-  damp_fact   = 0.3d0
-  damp_fact_2 = 0.05d0
+  !damp_fact   = 0.3d0
+  !damp_fact_2 = 0.05d0
+
+if (abs(delta_surf) .lt. 0.3d0) then
+   damp_fact = 0.10d0
+   damp_fact_2 = 0.02d0
+endif
+
+if (abs(delta_surf) .lt. 0.1d0) then
+   damp_fact = 0.03d0
+   damp_fact_2 = 0.005d0
+endif
+
   !== integrand for the non-local term ==!
   i = 1
   do while( i.le.n_m )
