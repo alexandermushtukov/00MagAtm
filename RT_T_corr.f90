@@ -58,18 +58,18 @@ real*8::help(n_m),f_int(n_m),dm,damp_fact,damp_fact_2
 integer::i
 real*8::kappa_T=0.4d0
 
-  !damp_fact   = 0.3d0
-  !damp_fact_2 = 0.05d0
+  damp_fact   = 0.3d0
+  damp_fact_2 = 0.05d0
 
-if (abs(delta_surf) .lt. 0.3d0) then
-   damp_fact = 0.10d0
-   damp_fact_2 = 0.02d0
-endif
+  if (abs(delta_surf) .lt. 0.3d0) then
+    damp_fact = 0.10d0
+    damp_fact_2 = 0.02d0
+  endif
 
-if (abs(delta_surf) .lt. 0.1d0) then
-   damp_fact = 0.03d0
-   damp_fact_2 = 0.005d0
-endif
+  if (abs(delta_surf) .lt. 0.1d0) then
+    damp_fact = 0.03d0
+    damp_fact_2 = 0.005d0
+  endif
 
   !== integrand for the non-local term ==!
   i = 1
