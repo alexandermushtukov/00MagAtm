@@ -67,6 +67,8 @@ real*8::eps_S,tol_S,small,help
   call set_atm_coefficients(S_therm,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_B,Z,A,&
                             dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
   !=====================================================================================!
+ 
+  !call test_opposite_ray_symmetry(m_coord_b,n_mu,n_fi); read(*,*)
 
   !== start iterrations ==!
   S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)    !== [kappa*B_22] : the 1st assumption about source function ==!
@@ -78,7 +80,6 @@ real*8::eps_S,tol_S,small,help
     flux_tot(1:n_m,1:2) = 0.d0
     J_E(1:n_m,1:2) = 0.d0
     kabs_mean(1:n_m,1:2) = 0.d0
-
     call RT_iterrations_v2(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,&
                            mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
 
@@ -731,7 +732,8 @@ end subroutine RT_iterrations_v2
 !================================================================================================
 ! ...
 !   R(i,j,j2,k,k2,1:2,1:2) requested
-!   R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2) + frac*R_b(i,jj,jj2,k1,1:2,1:2)
+!   R(i,j,j2,k,k2,1:2,1:2) = (1.d0-frac)*R_b(i,jj,jj2,k0,1:2,1:2)
+!                            + frac*R_b(i,jj,jj2,k1,1:2,1:2)
 !================================================================================================
 subroutine get_index_for_R(jj,jj2,k0,k1,frac,j,j2,k,k2,m_coord_b,n_mu,n_fi,dmu,dfi)
 implicit none
@@ -741,29 +743,56 @@ real*8,intent(in)::m_coord_b(n_mu,n_fi,2),dmu,dfi
 integer,intent(in)::j,j2,k,k2,n_mu,n_fi
 real*8::theta_ib,theta_fb,fi_ib,fi_fb,delta_fi,xk
 real*8::pi=3.141592653589793d0
-
+real*8::twopi
+  twopi = 2.d0*pi
   theta_ib = m_coord_b(j,k,1)
-  jj = nint( (cos(theta_ib) + 1.d0 - dmu/2) / dmu ) + 1;   jj = max(1, min(n_mu, jj))
+  jj = nint( (cos(theta_ib) + 1.d0 - dmu/2.d0) / dmu ) + 1
+  jj = max(1, min(n_mu, jj))
   fi_ib = m_coord_b(j,k,2)
 
   theta_fb = m_coord_b(j2,k2,1)
-  jj2 = nint( (cos(theta_fb) + 1.d0 - dmu/2) / dmu ) + 1;  jj2 = max(1, min(n_mu, jj2))
+  jj2 = nint( (cos(theta_fb) + 1.d0 - dmu/2.d0) / dmu ) + 1
+  jj2 = max(1, min(n_mu, jj2))
 
   fi_fb = m_coord_b(j2,k2,2)
-  delta_fi = fi_fb - fi_ib
-  ! wrap to [0,2pi)
-  delta_fi = delta_fi - 2*pi*floor(delta_fi/(2*pi))
 
-  ! (эквивалент if, но работает и для >2pi)
-  xk   = delta_fi/dfi           ! in [0, n_fi)
-  k0   = int(xk) + 1            ! 1..n_fi
-  frac = xk - dble(k0-1)        ! 0..1
+  ! wrap to [0, 2*pi)
+  delta_fi = modulo(fi_fb - fi_ib, twopi)
+
+  ! Convert angle difference to azimuthal-bin coordinate.
+  ! Ideally xk is in [0, n_fi), but roundoff may give xk == n_fi.
+  xk = delta_fi / dfi
+
+  if (xk .ge. dble(n_fi)) xk = 0.d0
+  if (xk .lt. 0.d0)       xk = 0.d0
+
+  k0 = int(xk) + 1
+
+  ! Protect against roundoff.
+  if (k0 .gt. n_fi) k0 = 1
+  if (k0 .lt. 1)    k0 = 1
+
+  frac = xk - dble(k0-1)
+
+  ! Protect frac against tiny roundoff excursions.
+  if (frac .lt. 0.d0) frac = 0.d0
+  if (frac .gt. 1.d0) frac = 0.d0
+
   k1 = k0 + 1
-  if (k1.gt.n_fi) k1 = 1        ! periodicity
+  if (k1 .gt. n_fi) k1 = 1
 
+  ! Temporary diagnostic check. Remove later if everything works.
+  if (jj.lt.1 .or. jj.gt.n_mu .or. jj2.lt.1 .or. jj2.gt.n_mu .or. &
+      k0.lt.1 .or. k0.gt.n_fi .or. k1.lt.1 .or. k1.gt.n_fi) then
+    write(*,*) 'BAD get_index_for_R'
+    write(*,*) 'j,j2,k,k2 = ', j,j2,k,k2
+    write(*,*) 'jj,jj2,k0,k1 = ', jj,jj2,k0,k1
+    write(*,*) 'fi_ib,fi_fb,delta_fi,xk,frac = ', fi_ib,fi_fb,delta_fi,xk,frac
+    write(*,*) 'n_mu,n_fi,dmu,dfi = ', n_mu,n_fi,dmu,dfi
+    stop
+  end if
 return
 end subroutine get_index_for_R
-
 
 
 !============================================================================================
