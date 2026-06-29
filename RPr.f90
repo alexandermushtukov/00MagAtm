@@ -120,36 +120,6 @@ return
 end subroutine test_cross_sections
 
 
-!====================================================================================================================
-! Elliptisity of normal waves: (-i)(Ey/Ex), where Oy \in (k,B), Ox \perp (k,B).
-! Cold plasma + vacuum effects are taken into account.
-!   alpha - defines the type of photon: X-mode (alpha=1) or O-mode (alpha=0 or 2)
-! This definition of elliptisity of related to the one from Lai(2003): NormWavesEll = -K .
-! [E]=[E_cyc]=[keV].
-!====================================================================================================================
-real*8 function NormWavesEll_cvp_(alpha,E,Ecyc,theta,rho,Z,A)
-implicit none
-integer,intent(in)::alpha
-real*8,intent(in)::E,Ecyc,theta,rho,Z,A
-real*8::B12
-real*8::K_1,K_2,Kz_1,Kz_2
-complex*16::beta,epsilon_pv,c_K_1,c_K_2,c_Kz_1,c_K_z2,K_plus,K_min
-dimension epsilon_pv(3,3)
-real*8::M_Stokes_rot
-dimension M_Stokes_rot(4,4)
-real*8::aa,n_1,n_2
-  
-  B12=Ecyc/11.6d0
-  call Dielectric_Tensor_Plasma_Vac(epsilon_pv,M_Stokes_rot,beta,aa,c_K_1,c_K_2,K_plus,K_min,c_Kz_1,c_K_z2,&
-                                    n_1,n_2,E,theta,B12,rho,Z,A)
-  if(alpha.eq.1)then
-    NormWavesEll_cvp_ = -real(K_plus)
-  else
-    NormWavesEll_cvp_ = -real(K_min)
-  end if
-return
-end function NormWavesEll_cvp_
-
 
 
 !================================================================================================================
