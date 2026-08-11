@@ -67,7 +67,7 @@ real*8 :: delta_Flog
   m_ns      = 1.4d0
   R6        = 1.d0
   B12       = 1.d2
-  theta_B   = 0.1d0
+  theta_B   = 0.5d0 !0.1d0
   Z         = 1.d0
   A         = 1.d0
   dot_m_6   = 0.d0
@@ -91,13 +91,13 @@ real*8 :: delta_Flog
   E_max = 20.d0
   !============================!
 
-  file_sp ="./res/res_B1e14_theta0_T1_sp"
+  file_sp ="./res/res_B1e14_theta05_T1_sp"
   open(unit = 25, file = file_sp); close(25)
 
-  file_t ="./res/res_B1e14_theta0_T1_t"
+  file_t ="./res/res_B1e14_theta05_T1_t"
   open(unit = 26, file = file_t); close(26)
 
-  file_iter ="./res/res_B1e14_theta0_T1_40_30_12_iter_"
+  file_iter ="./res/res_B1e14_theta05_T1_40_30_12_iter_"
   open(unit = 27, file = file_iter, status='replace', form='formatted'); close(27)
 
 

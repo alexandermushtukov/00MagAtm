@@ -36,134 +36,250 @@ end subroutine get_hydro_atm_structure
 
 
 !=======================================================================================================
-! ...
-!   m_atm_kappa(n_m,n_mu,n_fi,1,1:2) = m_atm_abs_b(i,jj,1,1:2) * kappa_T   !== true absorption ==!
-!   m_atm_kappa(n_m,n_mu,n_fi,2,1:2) = m_atm_abs_b(i,jj,2,1:2) * kappa_T   !== absorption due to Compton  ==!
+! Radiative transfer at fixed photon energy.
+! The source-function iterations are stopped automatically when both
+! the source function and the monochromatic flux profile have converged.
+! A large maximum iteration number is used only as a safety limit.
+!   m_atm_kappa(n_m,n_mu,n_fi,1,1:2) = true absorption
+!   m_atm_kappa(n_m,n_mu,n_fi,2,1:2) = Compton scattering
 !=======================================================================================================
 subroutine pol_RT_fixE(flux_tot,J_E,kabs_mean,dk_p,dk_J,dk_f,du,dFz,&
                        E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,&
                        n_m,n_mu,n_fi)
 use black_body
 implicit none
-real*8,intent(out)::flux_tot(n_m,2),J_E(n_m,2),kabs_mean(n_m,2),dk_p(n_m),dk_J(n_m),dk_f(n_m),du(n_m),dFz(n_m)
+real*8,intent(out)::flux_tot(n_m,2),J_E(n_m,2),kabs_mean(n_m,2), &
+                     dk_p(n_m),dk_J(n_m),dk_f(n_m),du(n_m),dFz(n_m)
 real*8::pi=3.141592653589793d0
-real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda,mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
+real*8,intent(in)::E,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda, &
+                    mas_m_rho(n_m,2),mas_tau_TkeV(n_m,2)
 integer,intent(in)::n_m,n_mu,n_fi
-real*8::S_therm(n_m,n_mu,n_fi,2),S_0(n_m,n_mu,n_fi,2),S_0_new(n_m,n_mu,n_fi,2),m_atm_kappa(n_m,n_mu,n_fi,2,2)
-real*8::S(n_m,n_mu,n_fi,2),I_out(n_mu,n_fi,2),I_out_tot(n_mu,n_fi,2),m_coord_b(n_mu,n_fi,2)
-real*8::dmu,dfi,mu,theta,R_b(n_m,n_mu,n_mu,n_fi,2,2),I_e(n_m,n_mu,n_fi,2)
-integer::i,k,j,i_max,j_,k_
-real*8::eps_S,tol_S,small,help
+real*8::S_therm(n_m,n_mu,n_fi,2)
+real*8::S_0(n_m,n_mu,n_fi,2)
+real*8::S_0_new(n_m,n_mu,n_fi,2)
+real*8::S(n_m,n_mu,n_fi,2)
 
-  dmu = 2.d0/n_mu; dfi = 2*pi/n_fi
+real*8::m_atm_kappa(n_m,n_mu,n_fi,2,2)
+real*8::m_coord_b(n_mu,n_fi,2)
+real*8::R_b(n_m,n_mu,n_mu,n_fi,2,2)
+real*8::I_e(n_m,n_mu,n_fi,2)
+
+real*8::dmu,dfi,mu,theta
+
+integer::i,k,j,j_,k_
+
+!=== convergence-control variables ==!
+integer::i_min,i_safety_max,n_good,n_good_required
+real*8::eps_S,eps_F,tol_S,tol_F
+real*8::small,help,flux_scale
+real*8::flux_prev(n_m),flux_now(n_m)
+logical::converged
+
+
+  dmu = 2.d0/n_mu
+  dfi = 2*pi/n_fi
+
   small = 1.d-30
+
+  !== convergence parameters ==!
   tol_S = 1.d-3
-  i_max = 30   !== maximal number of interractions ==!
+  tol_F = 1.d-3
+
+  i_min           = 3
+  n_good_required = 2
+
+  !== safety limit only; it is not a physical stopping criterion ==!
+  i_safety_max = 200
+
 
   !====================================================================================!
-  ! get S_therm - source function due to thermal emission [kappa*B_22]
-  !     R_b - redistrubution function [1/ster]
-  !     m_atm_kappa - map of opaity [cm^2/g]
+  ! Get:
+  !   S_therm     - thermal source function [kappa*B_22]
+  !   R_b         - scattering redistribution function [1/ster]
+  !   m_atm_kappa - opacity map [cm^2/g]
+  !====================================================================================!
+
   call set_atm_coefficients(S_therm,R_b,m_atm_kappa,m_coord_b,E,B12,g14,theta_B,Z,A,&
                             dot_m_6,ln_Lambda,mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-  !=====================================================================================!
- 
+
   !call test_opposite_ray_symmetry(m_coord_b,n_mu,n_fi); read(*,*)
 
-  !== start iterrations ==!
-  S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2)    !== [kappa*B_22] : the 1st assumption about source function ==!
 
-  !== iterrations of radiative transfer: start ==!
-  i=1
-  do while(i.le.i_max)
-    I_out_tot(1:n_mu,1:n_fi,1:2) = 0.d0
+  !== Initial source function: thermal emission only ==!
+  S_0(1:n_m,1:n_mu,1:n_fi,1:2) = &
+       S_therm(1:n_m,1:n_mu,1:n_fi,1:2)
+
+
+  !====================================================================================!
+  ! Adaptive source-function iterations
+  !====================================================================================!
+  i         = 1
+  n_good    = 0
+  converged = .false.
+
+  flux_prev(1:n_m) = 0.d0
+  do while(i.le.i_safety_max)
     flux_tot(1:n_m,1:2) = 0.d0
     J_E(1:n_m,1:2) = 0.d0
     kabs_mean(1:n_m,1:2) = 0.d0
-    call RT_iterrations_v2(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho,n_m,n_mu,n_fi,m_coord_b,&
+
+    !== Solve radiative transfer for the current source function ==!
+    call RT_iterrations_v2(I_e,S,E,S_0,T_eff,R_b,m_atm_kappa,mas_m_rho, &
+                           n_m,n_mu,n_fi,m_coord_b, &
                            mas_tau_TkeV(n_m,2),mas_tau_TkeV(n_m-1,2))
 
-    !== integration over (4*pi) ==!
+
+    !== Integration over 4*pi ==!
     k = 1
     do while(k.le.n_fi)
       j = 1
       do while(j.le.n_mu)
-        mu = -1.d0 + dmu/2 + (j-1)*dmu; theta = acos(mu)
-        flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + I_e(1:n_m,j,k,1:2)*mu * dmu*dfi
-        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + I_e(1:n_m,j,k,1:2) * dmu*dfi
-        kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) + m_atm_kappa(1:n_m,j,k,1,1:2) * dmu*dfi
+        mu = -1.d0 + dmu/2 + (j-1)*dmu
+        theta = acos(mu)
+        flux_tot(1:n_m,1:2) = flux_tot(1:n_m,1:2) + &
+                              I_e(1:n_m,j,k,1:2)*mu*dmu*dfi
+        J_E(1:n_m,1:2) = J_E(1:n_m,1:2) + &
+                         I_e(1:n_m,j,k,1:2)*dmu*dfi
+        kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) + &
+                               m_atm_kappa(1:n_m,j,k,1,1:2)*dmu*dfi
         j = j+1
       end do
+
       k = k+1
     end do
-    J_E(1:n_m,1:2) = J_E(1:n_m,1:2) / (4*pi)
-    kabs_mean(1:n_m,1:2) = kabs_mean(1:n_m,1:2) / (4*pi)
 
-    !== get new source function and check convergence ==!
-    S_0_new(1:n_m,1:n_mu,1:n_fi,1:2) = S_therm(1:n_m,1:n_mu,1:n_fi,1:2) + S(1:n_m,1:n_mu,1:n_fi,1:2)
+    J_E(1:n_m,1:2) = J_E(1:n_m,1:2)/(4*pi)
+    kabs_mean(1:n_m,1:2) = &
+         kabs_mean(1:n_m,1:2)/(4*pi)
 
-    eps_S = 0.d0
-    help = maxval( abs( S_0_new(1:n_m,1:n_mu,1:n_fi,1:2) - S_0(1:n_m,1:n_mu,1:n_fi,1:2) ) / &
-                   max( abs(S_0_new(1:n_m,1:n_mu,1:n_fi,1:2)), small ) )
+
+    !==================================================================================!
+    ! Build the updated source function
+    !==================================================================================!
+    S_0_new(1:n_m,1:n_mu,1:n_fi,1:2) = &
+         S_therm(1:n_m,1:n_mu,1:n_fi,1:2) + &
+         S(1:n_m,1:n_mu,1:n_fi,1:2)
+
+    !== Relative change of the source function ==!
+    help = maxval( &
+           abs(S_0_new(1:n_m,1:n_mu,1:n_fi,1:2) - &
+               S_0(1:n_m,1:n_mu,1:n_fi,1:2)) / &
+           max(abs(S_0_new(1:n_m,1:n_mu,1:n_fi,1:2)),small) )
     eps_S = help
 
-    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = S_0_new(1:n_m,1:n_mu,1:n_fi,1:2)
-    I_out_tot(1:n_mu,1:n_fi,1:2) = I_out(1:n_mu,1:n_fi,1:2)
-    if( eps_S.lt.tol_S )exit
+    !==================================================================================!
+    ! Check convergence of the monochromatic flux profile
+    !==================================================================================!
+    flux_now(1:n_m) = flux_tot(1:n_m,1) + flux_tot(1:n_m,2)
+    if(i.eq.1)then
+      !== No previous flux profile is available yet ==!
+      eps_F = 1.d30
+    else
+      !== Global relative change of the flux profile.
+      !   Using a global normalization avoids numerical problems
+      !   at depths where the monochromatic flux is close to zero. ==!
+      flux_scale = max( maxval(abs(flux_now(1:n_m))), &
+                        maxval(abs(flux_prev(1:n_m))), &
+                        small )
+      eps_F = maxval( abs(flux_now(1:n_m) - flux_prev(1:n_m)) ) / &
+              flux_scale
+    end if
+
+    !== Update source function for the next iteration ==!
+    S_0(1:n_m,1:n_mu,1:n_fi,1:2) = &
+         S_0_new(1:n_m,1:n_mu,1:n_fi,1:2)
+
+    !==================================================================================!
+    ! Convergence requires BOTH source function and flux to be stable.
+    ! Require the condition to hold for two consecutive iterations.
+    !==================================================================================!
+    if(i.ge.i_min)then
+      if( (eps_S.lt.tol_S) .and. (eps_F.lt.tol_F) )then
+        n_good = n_good + 1
+      else
+        n_good = 0
+      end if
+    else
+      n_good = 0
+    end if
+
+    if(n_good.ge.n_good_required)then
+      converged = .true.
+      exit
+    end if
+
+    !== Save flux profile for the next convergence check ==!
+    flux_prev(1:n_m) = flux_now(1:n_m)
     i = i+1
   end do
-  !== iterrations of radiative transfer: end ==!
 
-  !== get dk_ ==!
-  dk_p(1:n_m) = 0.d0; dk_J(1:n_m) = 0.d0; dk_f(1:n_m) = 0.d0
-  du(1:n_m) = 0.d0
+  !== Diagnostic warning only if the RT iterations failed to converge ==!
+  if(.not.converged)then
+    write(*,*) '# WARNING: RT convergence not reached: ', &
+               'E=',E,'  Niter=',i_safety_max, &
+               '  eps_S=',eps_S,'  eps_F=',eps_F
+  end if
+
+  !== Optional diagnostic; useful during testing ==!
+  !write(*,*) '# RT convergence: E=',E,' Niter=',i, &
+  !           ' eps_S=',eps_S,' eps_F=',eps_F
+  !====================================================================================!
+  ! End of adaptive radiative-transfer iterations
+  !====================================================================================!
+
+  !== Get dk_ ==!
+  dk_p(1:n_m) = 0.d0
+  dk_J(1:n_m) = 0.d0
+  dk_f(1:n_m) = 0.d0
+
+  du(1:n_m)  = 0.d0
   dFz(1:n_m) = 0.d0
+
   i = 1
-  do while( i.le.n_m )
+  do while(i.le.n_m)
     j = 1
-    do while( j.le.n_mu )
+    do while(j.le.n_mu)
       mu = -1.d0 + dmu/2 + (j-1)*dmu
       k = 1
-      do while( k.le.n_fi )
-        dk_p(i) = dk_p(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1) + m_atm_kappa(i,j,k,1,2) ) * BB_Intensity_22(E,mas_tau_TkeV(i,2))!/2
-        dk_J(i) = dk_J(i) + dmu*dfi* ( m_atm_kappa(i,j,k,1,1)*I_e(i,j,k,1) + m_atm_kappa(i,j,k,1,2)*I_e(i,j,k,2) )
-        !dk_f(i) = dk_f(i) + dmu*dfi/mu/2*sign(1.d0,mu)* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
-        !                                                  + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
-        !dk_f(i) = dk_f(i) + dmu*dfi/mu/2* ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
-        !                                                   + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) )
-        if( mu.gt.0.d0 )then
+      do while(k.le.n_fi)
+        dk_p(i) = dk_p(i) + dmu*dfi * &
+                  ( m_atm_kappa(i,j,k,1,1) + &
+                    m_atm_kappa(i,j,k,1,2) ) * &
+                  BB_Intensity_22(E,mas_tau_TkeV(i,2))
+
+        dk_J(i) = dk_J(i) + dmu*dfi * &
+                  ( m_atm_kappa(i,j,k,1,1)*I_e(i,j,k,1) + &
+                    m_atm_kappa(i,j,k,1,2)*I_e(i,j,k,2) )
+
+        if(mu.gt.0.d0)then
           j_ = n_mu + 1 - j
-          k_ = k + n_fi/2; k_ = mod(k_ - 1, n_fi) + 1
-          dk_f(i) = dk_f(i) + dmu*dfi/mu/2* &
-                   ( (m_atm_kappa(i,j,k,1,1)+m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
-                      + (m_atm_kappa(i,j,k,1,2)+m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) &
-                      - (m_atm_kappa(i,j_,k_,1,1)+m_atm_kappa(i,j_,k_,2,1))*I_e(i,j_,k_,1) &
-                      - (m_atm_kappa(i,j_,k_,1,2)+m_atm_kappa(i,j_,k_,2,2))*I_e(i,j_,k_,2) )
+          k_ = k + n_fi/2
+          k_ = mod(k_ - 1,n_fi) + 1
+          dk_f(i) = dk_f(i) + dmu*dfi/mu/2 * &
+                   ( (m_atm_kappa(i,j,k,1,1) + &
+                      m_atm_kappa(i,j,k,2,1))*I_e(i,j,k,1) &
+
+                   + (m_atm_kappa(i,j,k,1,2) + &
+                      m_atm_kappa(i,j,k,2,2))*I_e(i,j,k,2) &
+
+                   - (m_atm_kappa(i,j_,k_,1,1) + &
+                      m_atm_kappa(i,j_,k_,2,1))*I_e(i,j_,k_,1) &
+
+                   - (m_atm_kappa(i,j_,k_,1,2) + &
+                      m_atm_kappa(i,j_,k_,2,2))*I_e(i,j_,k_,2) )
         end if
-        du(i)  = du(i) + dmu*dfi*( I_e(i,j,k,1) + I_e(i,j,k,2) )
-        dFz(i) = dFz(i) + dmu*dfi* mu*( I_e(i,j,k,1) + I_e(i,j,k,2) )    !== flux in [erg/cm^2] ==!
+        du(i) = du(i) + dmu*dfi * &
+                (I_e(i,j,k,1) + I_e(i,j,k,2))
+        dFz(i) = dFz(i) + dmu*dfi*mu * &
+                 (I_e(i,j,k,1) + I_e(i,j,k,2))
         k = k+1
       end do
       j = j+1
     end do
     i = i+1
   end do
-  !===================================!
-
-  !== printing if needed ==!
-  k = 1
-  do while(k.le.n_fi)
-    j = 1
-    do while(j.le.n_mu)
-      !write(*,*)k*dfi,j*dmu,I_out(j,k,1:2)
-      j = j+1
-    end do
-    !write(*,*)
-    k = k+1
-  end do
 return
 end subroutine pol_RT_fixE
-
 
 !==============================================================================================================================
 !  Subroutine pre-calculates souurce function in the atmosphere and scattering redistributoon function.
