@@ -57,6 +57,9 @@ end subroutine get_accur_metrics
 
 
 !==================================================================================
+! Temperature correction in the real atmospheric points.
+! Point n_m is the lower boundary / ghost point and is controlled separately
+! by the lower flux boundary condition in the main program.
 !==================================================================================
 subroutine temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m,E_min,E_max,n_E,delta_surf)
 use black_body
@@ -68,10 +71,11 @@ real*8::help(n_m),f_int(n_m),damp_fact,damp_fact_2
 integer::i,n_atm
 real*8::kappa_T=0.4d0
 
-  n_atm = n_m - 1   !== last point is lower boundary, not atmosphere ==!
+  !== n_m is the lower boundary / ghost point ==!
+  n_atm = n_m - 1
 
-  damp_fact   = 0.03d0  !0.3d0
-  damp_fact_2 = 0.005d0 !0.05d0
+  damp_fact   = 0.1d0  !0.3d0
+  damp_fact_2 = 0.01d0 !0.05d0
 
   !if (abs(delta_surf) .lt. 0.3d0) then
   !  damp_fact = 0.10d0
@@ -87,14 +91,15 @@ real*8::kappa_T=0.4d0
   help(1:n_m) = 0.d0
   f_int(1:n_m) = 0.d0
 
-  !== integrand for the non-local term; exclude lower boundary ==!
+  !== integrand for the non-local term;
+  !   use only real atmospheric points ==!
   i = 1
   do while( i.le.n_atm )
     f_int(i) = k_F(i)/kappa_T * ( F_target - Fz(i) )
     i = i+1
   end do
 
-  !== cumulative integral from surface to active atmosphere point ==!
+  !== cumulative integral from surface to active atmospheric point ==!
   help(1) = 0.d0
 
   i = 2
@@ -102,25 +107,32 @@ real*8::kappa_T=0.4d0
     if( i.eq.2 )then
       help(i) = mas_tau_TkeV(1,1) * f_int(1)
     else
-      help(i) = help(i-1) + ( mas_tau_TkeV(i-1,1) - mas_tau_TkeV(i-2,1) ) &
-                            * ( f_int(i-1) + f_int(i-2) ) / 2.d0
+      help(i) = help(i-1) + &
+                ( mas_tau_TkeV(i-1,1) - mas_tau_TkeV(i-2,1) ) * &
+                ( f_int(i-1) + f_int(i-2) ) / 2.d0
     end if
     i = i+1
   end do
 
-  !== temperature correction only for real atmosphere points ==!
+  !== temperature correction only for real atmospheric points ==!
   i = 1
   do while( i.le.n_atm )
-    dT(i) = mas_tau_TkeV(i,2)/16.d0/( BB_Flux24_interval(mas_tau_TkeV(i,2),E_min,E_max,n_E) *100.d0 ) &
-            * ( 3.d10/k_p(i) * ( k_J(i)*u(i) - k_p(i)*u_p(i) ) &
-            + k_J(i)/k_p(i) * ( help(i) + 2.d0*( F_target - Fz(1) ) ) )
+
+    dT(i) = mas_tau_TkeV(i,2)/16.d0 / &
+            ( BB_Flux24_interval(mas_tau_TkeV(i,2),E_min,E_max,n_E) * 100.d0 ) * &
+            ( 3.d10/k_p(i) * ( k_J(i)*u(i) - k_p(i)*u_p(i) ) &
+            + k_J(i)/k_p(i) * &
+              ( help(i) + 2.d0*( F_target - Fz(1) ) ) )
 
     dT(i) = dT(i)*damp_fact
-    dT(i) = sign(1.d0,dT(i)) * min( abs(dT(i)), damp_fact_2 * mas_tau_TkeV(i,2) )
+
+    dT(i) = sign(1.d0,dT(i)) * &
+            min( abs(dT(i)), damp_fact_2*mas_tau_TkeV(i,2) )
+
     i = i+1
   end do
 
-  !== lower boundary is fixed; do not correct it ==!
+  !== n_m is controlled separately by the lower flux boundary condition ==!
   dT(n_m) = 0.d0
 
 return

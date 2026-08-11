@@ -22,8 +22,11 @@ real*8, allocatable :: flux_E_all(:,:,:),J_E_all(:,:,:)
 real*8, allocatable :: dk_p_all(:,:),dk_J_all(:,:),dk_f_all(:,:)
 real*8, allocatable :: du_all(:,:),dFz_all(:,:)
 
+real*8, allocatable :: flux_E_loc(:,:), J_E_loc(:,:), kabs_mean_loc(:,:)
+real*8, allocatable :: dk_p_loc(:), dk_J_loc(:), dk_f_loc(:), du_loc(:), dFz_loc(:)
+
 integer :: i_iter,jj
-character*100 :: file_sp,file_t
+character*100 :: file_sp,file_t,file_iter
 real*8 :: eps
 real*8 :: sigma_SB_22_keV,help
 
@@ -32,6 +35,7 @@ real*8 :: lambda_T, lambda_bot
 real*8 :: max_rel_flux_err, max_rel_dT, rel_flux_err
 real*8 :: flux_surf, dm, gradF_scale
 real*8 :: m_turn, p_weight, wloc
+real*8 :: gradT_bot, rel_bot_err, dm_bot
 integer :: iter_max
 real*8:: delta_surf,eps_Flog,eps_Fmax,eps_rough,delta_surf_,eps_Flog_,eps_Fmax_,eps_rough_
 
@@ -47,7 +51,7 @@ real*8 :: delta_Flog
 
   lambda_T   = 0.25d0
   lambda_bot = 0.15d0
-  iter_max   = 1000
+  iter_max   = 200
 
   m_turn   = 100.d0
   p_weight = 1.d0
@@ -59,11 +63,11 @@ real*8 :: delta_Flog
   200 format (100(es11.4,"   ") )
 
   ! === Physical parameters ===
-  T_eff     = 0.6d0
+  T_eff     = 1.d0
   m_ns      = 1.4d0
   R6        = 1.d0
   B12       = 1.d2
-  theta_B   = 1.d0
+  theta_B   = 0.1d0
   Z         = 1.d0
   A         = 1.d0
   dot_m_6   = 0.d0
@@ -71,26 +75,31 @@ real*8 :: delta_Flog
   ! ===========================
 
   !== OpenMP parameters ==!
-  n_threads = 2
+  n_threads = 20
   call omp_set_num_threads(n_threads)
 
   g14 = 1.328d0*m_ns/R6**2
-
-  file_sp ="./res/res_B1e14_theta0_T2_sp"
-  open(unit = 25, file = file_sp); close(25)
-  file_t ="./res/res_B1e14_theta0_T2_t"
-  open(unit = 26, file = file_t); close(26)
 
   !=== Numerical parameters ===!
   m_min = 1.d-2
   m_max = 1.d+4
   n_m   = 40
-  n_mu  = 20
-  n_fi  = 16
+  n_mu  = 30
+  n_fi  = 12
   n_E   = 80
   E_min = 0.01d0
   E_max = 20.d0
   !============================!
+
+  file_sp ="./res/res_B1e14_theta0_T1_sp"
+  open(unit = 25, file = file_sp); close(25)
+
+  file_t ="./res/res_B1e14_theta0_T1_t"
+  open(unit = 26, file = file_t); close(26)
+
+  file_iter ="./res/res_B1e14_theta0_T1_40_30_12_iter_"
+  open(unit = 27, file = file_iter, status='replace', form='formatted'); close(27)
+
 
   write(*,*) "# B12=",B12,"  theta_B=",theta_B
   write(*,*) "# n_m=",n_m,"  n_mu=",n_mu,"  n_fi=",n_fi
@@ -107,10 +116,8 @@ real*8 :: delta_Flog
             flux_E_prev(n_m,2), J_E_prev(n_m,2), kabs_mean_prev(n_m,2), &
             dk_p_prev(n_m), dk_J_prev(n_m), dk_f_prev(n_m), du_prev(n_m), dFz_prev(n_m) )
 
-  allocate( E_grid(n_E),F_E_target_grid(n_E), &
-            flux_E_all(n_E,n_m,2),J_E_all(n_E,n_m,2), &
-            dk_p_all(n_E,n_m),dk_J_all(n_E,n_m),dk_f_all(n_E,n_m), &
-            du_all(n_E,n_m),dFz_all(n_E,n_m) )
+  allocate( E_grid(n_E),F_E_target_grid(n_E),flux_E_all(n_E,n_m,2),J_E_all(n_E,n_m,2), &
+            dk_p_all(n_E,n_m),dk_J_all(n_E,n_m),dk_f_all(n_E,n_m),du_all(n_E,n_m),dFz_all(n_E,n_m) )
 
   ! === Initial temperature structure ===
   i = 1
@@ -120,6 +127,11 @@ real*8 :: delta_Flog
     i = i + 1
   end do
   TkeV_old(1:n_m) = mas_tau_TkeV(1:n_m,2)
+
+  !== Initial lower-boundary temperature gradient ==!
+  dm_bot = mas_tau_TkeV(n_m,1) - mas_tau_TkeV(n_m-1,1)
+  gradT_bot = ( mas_tau_TkeV(n_m,2) - mas_tau_TkeV(n_m-1,2) ) / &
+              max(dm_bot,1.d-30)
 
   !=== Temperature iterations ===!
   delta_surf_= 1.d3
@@ -142,8 +154,8 @@ real*8 :: delta_Flog
     k_p(1:n_m) = 0.d0
     k_J(1:n_m) = 0.d0
     k_F(1:n_m) = 0.d0
-    u(1:n_m) = 0.d0
-    Fz(1:n_m) = 0.d0
+    u(1:n_m)   = 0.d0
+    Fz(1:n_m)  = 0.d0
 
     !=== Prepare energy grid ===!
     i = 1
@@ -153,28 +165,30 @@ real*8 :: delta_Flog
       i = i+1
     end do
 
-    !=== Parallel radiative transfer over energy ===!
-    !$omp parallel do default(shared) private(i,E_,flux_E,J_E,kabs_mean,dk_p,dk_J,dk_f,du,dFz) schedule(dynamic)
-    do i = 1, n_E
-      E_ = E_grid(i)
-      call pol_RT_fixE(flux_E,J_E,kabs_mean,dk_p,dk_J,dk_f,du,dFz,&
-                       E_,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda, &
-                       mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
-      spec(i,1) = E_
-      spec(i,2) = flux_E(1,1)
-      spec(i,3) = flux_E(1,2)
-
-      flux_E_all(i,1:n_m,1:2) = flux_E(1:n_m,1:2)
-      J_E_all(i,1:n_m,1:2)    = J_E(1:n_m,1:2)
-
-      dk_p_all(i,1:n_m) = dk_p(1:n_m)
-      dk_J_all(i,1:n_m) = dk_J(1:n_m)
-      dk_f_all(i,1:n_m) = dk_f(1:n_m)
-
-      du_all(i,1:n_m)  = du(1:n_m)
-      dFz_all(i,1:n_m) = dFz(1:n_m)
-    end do
-    !$omp end parallel do
+  !$omp parallel default(shared) private(i,E_,flux_E_loc,J_E_loc,kabs_mean_loc,dk_p_loc,dk_J_loc,dk_f_loc,du_loc,dFz_loc)
+  allocate(flux_E_loc(n_m,2), J_E_loc(n_m,2), kabs_mean_loc(n_m,2))
+  allocate(dk_p_loc(n_m), dk_J_loc(n_m), dk_f_loc(n_m), du_loc(n_m), dFz_loc(n_m))
+  !$omp do schedule(dynamic)
+  do i = 1, n_E
+    E_ = E_grid(i)
+    call pol_RT_fixE(flux_E_loc,J_E_loc,kabs_mean_loc,dk_p_loc,dk_J_loc,dk_f_loc,du_loc,dFz_loc, &
+                   E_,B12,g14,T_eff,theta_B,Z,A,dot_m_6,ln_Lambda, &
+                   mas_m_rho,mas_tau_TkeV,n_m,n_mu,n_fi)
+    spec(i,1) = E_
+    spec(i,2) = flux_E_loc(1,1)
+    spec(i,3) = flux_E_loc(1,2)
+    flux_E_all(i,1:n_m,1:2) = flux_E_loc(1:n_m,1:2)
+    J_E_all(i,1:n_m,1:2)    = J_E_loc(1:n_m,1:2)
+    dk_p_all(i,1:n_m) = dk_p_loc(1:n_m)
+    dk_J_all(i,1:n_m) = dk_J_loc(1:n_m)
+    dk_f_all(i,1:n_m) = dk_f_loc(1:n_m)
+    du_all(i,1:n_m)  = du_loc(1:n_m)
+    dFz_all(i,1:n_m) = dFz_loc(1:n_m)
+  end do
+  !$omp end do
+  deallocate(flux_E_loc, J_E_loc, kabs_mean_loc)
+  deallocate(dk_p_loc, dk_J_loc, dk_f_loc, du_loc, dFz_loc)
+  !$omp end parallel
 
     !=== Trapezoidal integration over energy ===!
     i = 2
@@ -241,39 +255,72 @@ real*8 :: delta_Flog
 
     call temperature_correction(dT,F_target,Fz,mas_tau_TkeV,k_F,k_J,k_P,u,u_p,n_m,E_min,E_max,n_E,delta_surf)
 
-    call smooth_array(dT_sm, dT, n_m, 2, weights)
+    !== Smooth only the real atmosphere; n_m is the lower boundary point ==!
+    call smooth_array(dT_sm(1:n_m-1), dT(1:n_m-1), n_m-1, 2, weights)
+    dT_sm(n_m) = 0.d0
 
-    do i = 1, n_m
-      wloc = 1.d0
-      if (i > n_m-6) wloc = 1.d0 - 0.25d0 * ( i-n_m+6 )/6.d0
+    do i = 1, n_m-1
       dT_sm(i) = sign(1.d0,dT_sm(i)) * &
-                 min(abs(dT_sm(i)), wloc*0.05d0*mas_tau_TkeV(i,2))
+                 min(abs(dT_sm(i)), 0.5d0*mas_tau_TkeV(i,2))
     end do
 
     eps_Flog_ = eps_Flog
     spec_(1:n_E,1:3) = spec(1:n_E,1:3)
 
     !=== Print atmospheric structure for the current iteration ===!
+    !---- Screen output ----!
     write(*,*) '# atmosphere structure, iter =', i_iter
-    write(*,*) '# i, m, rho, T_keV, dT, F, F_target, J_tot(1:2)'
+    write(*,*) '# i, m, rho, T_keV, dT, F, F_target, flux_mode1, flux_mode2'
 
     i = 2
     do while (i .le. n_m)
       write(*,'(I5,1X,3F10.4,1X,ES12.4,1X,F10.4,1X,F12.4,1X,F12.4,1X,F12.4,1X,F12.4)') &
-            i, mas_tau_TkeV(i,1), mas_m_rho(i,2), mas_tau_TkeV(i,2),  &
+            i, mas_tau_TkeV(i,1), mas_m_rho(i,2), mas_tau_TkeV(i,2), &
             dT_sm(i), flux(i), F_target, flux_tot(i,1:2)
       i = i + 1
     end do
 
-    write(*,*)"# :  delta_surf, eps_Flog, eps_Fmax, eps_rough"
-    write(*,*)"# ", delta_surf, eps_Flog, eps_Fmax, eps_rough
+    write(*,*) "# :  delta_surf, eps_Flog, eps_Fmax, eps_rough"
+    write(*,*) "# ", delta_surf, eps_Flog, eps_Fmax, eps_rough
 
-    !=== Update the temperature profile ===!
-    i = 1
+    !---- Append the same information to iteration file ----!
+    open(unit=27, file=file_iter, status='old', position='append', form='formatted')
+    write(27,*)
+    write(27,*) '# atmosphere structure, iter =', i_iter
+    write(27,*) '# i, m, rho, T_keV, dT, F, F_target, flux_mode1, flux_mode2'
+
+    i = 2
     do while (i .le. n_m)
+      write(27,'(I5,1X,3F10.4,1X,ES12.4,1X,F10.4,1X,F12.4,1X,F12.4,1X,F12.4,1X,F12.4)') &
+            i, mas_tau_TkeV(i,1), mas_m_rho(i,2), mas_tau_TkeV(i,2), &
+            dT_sm(i), flux(i), F_target, flux_tot(i,1:2)
+      i = i + 1
+    end do
+
+    write(27,*) "# :  delta_surf, eps_Flog, eps_Fmax, eps_rough"
+    write(27,*) "# ", delta_surf, eps_Flog, eps_Fmax, eps_rough
+    write(27,*)
+    close(27)
+
+    !=== Update temperature in the real atmosphere ===!
+    i = 1
+    do while (i .le. n_m-1)
       mas_tau_TkeV(i,2) = max(T_floor, mas_tau_TkeV(i,2) + dT_sm(i))
       i = i + 1
     end do
+
+    !=== Adjust lower-boundary gradient according to the flux error ===!
+    rel_bot_err = (F_target - Fz(n_m-1)) / max(F_target,1.d-30)
+
+    gradT_bot = gradT_bot * (1.d0 + lambda_bot*rel_bot_err)
+
+    !== Temperature must increase inward for positive outward flux ==!
+    gradT_bot = max(gradT_bot,0.d0)
+
+    dm_bot = mas_tau_TkeV(n_m,1) - mas_tau_TkeV(n_m-1,1)
+
+    !== n_m is a lower-boundary point determined by the required flux ==!
+    mas_tau_TkeV(n_m,2) = mas_tau_TkeV(n_m-1,2) + gradT_bot*dm_bot
 
     open(unit = 25, file = file_sp, status = 'old', form='formatted')
     i = 1
@@ -296,7 +343,6 @@ real*8 :: delta_Flog
 
 144 return
 end program MagAtm
-
 
 !======================================================================
 ! Smooth a 1D array using neighbour points and fixed weights
@@ -350,65 +396,54 @@ implicit none
 integer,intent(in) :: n_mu,n_fi
 real*8,intent(in) :: m_coord_b(n_mu,n_fi,2)
 integer :: j,k,j_,k_
-real*8 :: pi
+real*8 :: pi = 3.141592653589793d0
 real*8 :: th1,th2,ph1,ph2
 real*8 :: err_mu,err_phi
 real*8 :: max_err_mu,max_err_phi
 real*8 :: dphi
+  max_err_mu  = 0.d0
+  max_err_phi = 0.d0
+  write(*,*)
+  write(*,*) '# ====================================================='
+  write(*,*) '# TEST: opposite-ray symmetry'
+  write(*,*) '# ====================================================='
+  do j = 1, n_mu
+    j_ = n_mu + 1 - j
+    do k = 1, n_fi
+      !== opposite azimuth ==!
+      k_ = k + n_fi/2
+      k_ = mod(k_ - 1, n_fi) + 1
 
-pi = 3.141592653589793d0
+      th1 = m_coord_b(j ,k ,1)
+      ph1 = m_coord_b(j ,k ,2)
 
-max_err_mu  = 0.d0
-max_err_phi = 0.d0
+      th2 = m_coord_b(j_,k_,1)
+      ph2 = m_coord_b(j_,k_,2)
 
-write(*,*)
-write(*,*) '# ====================================================='
-write(*,*) '# TEST: opposite-ray symmetry'
-write(*,*) '# ====================================================='
+      !== check cos(theta_B) symmetry ==!
+      err_mu = abs( cos(th2) + cos(th1) )
 
-do j = 1, n_mu
+      !== check phi_B symmetry modulo 2pi ==!
+      dphi = ph2 - ph1 - pi
 
-  j_ = n_mu + 1 - j
+      !== wrap to [-pi,+pi] ==!
+      dphi = dphi - 2.d0*pi*nint(dphi/(2.d0*pi))
 
-  do k = 1, n_fi
+      err_phi = abs(dphi)
+  
+      max_err_mu  = max(max_err_mu ,err_mu )
+      max_err_phi = max(max_err_phi,err_phi)
 
-    !== opposite azimuth ==!
-    k_ = k + n_fi/2
-    k_ = mod(k_ - 1, n_fi) + 1
-
-    th1 = m_coord_b(j ,k ,1)
-    ph1 = m_coord_b(j ,k ,2)
-
-    th2 = m_coord_b(j_,k_,1)
-    ph2 = m_coord_b(j_,k_,2)
-
-    !== check cos(theta_B) symmetry ==!
-    err_mu = abs( cos(th2) + cos(th1) )
-
-    !== check phi_B symmetry modulo 2pi ==!
-    dphi = ph2 - ph1 - pi
-
-    !== wrap to [-pi,+pi] ==!
-    dphi = dphi - 2.d0*pi*nint(dphi/(2.d0*pi))
-
-    err_phi = abs(dphi)
-
-    max_err_mu  = max(max_err_mu ,err_mu )
-    max_err_phi = max(max_err_phi,err_phi)
-
-    if( (err_mu.gt.1.d-10).or.(err_phi.gt.1.d-10) )then
-      write(*,'(A,4I5,2ES12.4)') &
-      'BAD_PAIR: ',j,k,j_,k_,err_mu,err_phi
-    end if
-
+      if( (err_mu.gt.1.d-10).or.(err_phi.gt.1.d-10) )then
+        write(*,'(A,4I5,2ES12.4)') &
+        'BAD_PAIR: ',j,k,j_,k_,err_mu,err_phi
+      end if
+    end do
   end do
-end do
-
-write(*,*)
-write(*,*) '# max error in cos(theta_B): ',max_err_mu
-write(*,*) '# max error in phi_B       : ',max_err_phi
-write(*,*) '# ====================================================='
-write(*,*)
-
+  write(*,*)
+  write(*,*) '# max error in cos(theta_B): ',max_err_mu
+  write(*,*) '# max error in phi_B       : ',max_err_phi
+  write(*,*) '# ====================================================='
+  write(*,*)
 return
 end subroutine test_opposite_ray_symmetry
